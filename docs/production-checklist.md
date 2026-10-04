@@ -41,6 +41,8 @@ Orijinal Metin2 tasarımı bu portlara sadece sunucunun kendi süreçlerinin eri
 - [ ] **Çekirdekler arası P2P mesajı çalışıyor** (iki client, iki farklı çekirdekte iki karakter): GM `/notice <metin>` diğer
       çekirdekteki oyuncuda görünüyor (`GG::NOTICE`, `game/cmd_gm.cpp:1155`) ve GM `/transfer <isim>` diğer çekirdekteki
       oyuncuyu getiriyor (`GG::TRANSFER`, `game/cmd_gm.cpp:95-135`).
+      Kanıt için `log.command_log` (GM komutları) ve diğer çekirdeğin `syslog.log`'u (`WarpSet <isim> … target map …`,
+      `P2P: Login/Logout <isim>`) kullanılır; notice alımı log'a yazılmaz, oyunda görülerek doğrulanır.
 - [ ] Kural açılışta kendiliğinden yükleniyor (`pfctl -s info` → `Enabled`, `pfctl -sr` kuralı gösteriyor) — VM'i yeniden başlatarak test et.
 
 Referans: `docs/worklog/2026-10-05-p2p-firewall.md`.
