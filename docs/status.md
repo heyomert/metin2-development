@@ -1,7 +1,7 @@
 # Durum
 
-Kapsadığı commit: db858d34 (2026-10-05). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline db858d34..HEAD -- . ':!docs/status.md'` boş değilse eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: 7b4df27a (2026-10-05). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline 7b4df27a..HEAD -- . ':!docs/status.md'` boş değilse eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
 Faz 1 — güvenlik temeli ve gözlemlenebilirlik (`docs/roadmap.md`). K-1 (P2P firewall): test VM ✅ (PR #5), production ☐.
