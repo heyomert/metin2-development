@@ -56,8 +56,22 @@ Hız/saldırı hızı/kombo tespitleri şu an sadece log yazıyor, oyuncuyu atm�
 - [ ] `CHECK_MULTIHACK` (şu an `0`) için karar
 - [ ] `log.speed_hack` tablosu monitoring/panelde izleniyor
 
-### ☐ K-2 — Şifre saklama yöntemi · ☐ K-3 — Yönetim kanalı şifresi
-Bkz. `docs/roadmap.md` (Faz 1.2, 1.3). Ayrıntılı doğrulama maddeleri ilgili iş yapılırken buraya eklenecek.
+### ☐ K-3 — Yönetim kanalı
+
+**Neden:** Repodaki şifre herkesçe biliniyor (upstream ile aynı; repoda artık yer tutucu `CHANGE_ME_BEFORE_PRODUCTION` var),
+yönetim girişinde şifre log'a düşüyor (kod adımı yapılana kadar), `ADMINPAGE_IP` boşsa şifreyi bilen herkes yönetici olur.
+Ayrıntı: `docs/roadmap.md` K-3, `docs/worklog/2026-10-05-admin-channel-config.md`.
+
+- [ ] `game.txt`'de `ADMINPAGE_PASSWORD` rastgele ve uzun (ör. `openssl rand -hex 16`); yer tutucu ya da upstream değeri **değil**.
+      Değer repo dışında saklanıyor, ekrana/log'a basılmadan üretildi.
+- [ ] `ADMINPAGE_IP` dolu ve sadece gerekenler var (ör. `127.0.0.1` ya da yönetim servisinin IP'si). **Boş olmamalı.**
+- [ ] `conf/` dosyaları `640`, klasör `750`; kurulumdan sonra `server/perms.py` (`0o777`) yeniden çalıştırılmadı (A-12).
+- [ ] Log'larda şifre yok (değeri basmadan sayım):
+      `P=$(grep '^ADMINPAGE_PASSWORD' <conf>/game.txt | sed 's/^[^:]*:[ ]*//' | tr -d '\r'); grep -rlF "$P" <channels>/ /var/log/m2dev.log | wc -l; unset P` → `0`
+- [ ] **Kod adımı yapıldı:** yönetim girişi şifresi log'a yazılmıyor (`input.cpp:238`, `config.cpp:198`) ve A-11 değerlendirildi.
+
+### ☐ K-2 — Şifre saklama yöntemi
+Bkz. `docs/roadmap.md` (Faz 1.2). Ayrıntılı doğrulama maddeleri ilgili iş yapılırken buraya eklenecek.
 
 ## Yapılandırma temizliği (Faz 1.8)
 
