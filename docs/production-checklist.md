@@ -47,6 +47,15 @@ Orijinal Metin2 tasarımı bu portlara sadece sunucunun kendi süreçlerinin eri
 
 Referans: `docs/worklog/2026-10-05-p2p-firewall.md`.
 
+### ☐ A-1 — Sunucu tarafı hile korumaları (karar gerekiyor)
+
+Hız/saldırı hızı/kombo tespitleri şu an sadece log yazıyor, oyuncuyu atmıyor (`docs/roadmap.md` A-1). Açılıştan önce her biri için
+**bilinçli karar** verilip kayda geçmeli: etkinleştir ya da bilerek kapalı bırak.
+- [ ] Zaman hilesi (`input_main.cpp:1615-1622`) ve saldırı hızı sayacı (`char.cpp:7077-7090`) için tepki politikası kararı (log / uyarı / at / ban);
+      kararın yan etkisi (arka plandaki pencere, yüksek ping gibi meşru durumlarda yanlış alarm) test edilmiş
+- [ ] `CHECK_MULTIHACK` (şu an `0`) için karar
+- [ ] `log.speed_hack` tablosu monitoring/panelde izleniyor
+
 ### ☐ K-2 — Şifre saklama yöntemi · ☐ K-3 — Yönetim kanalı şifresi
 Bkz. `docs/roadmap.md` (Faz 1.2, 1.3). Ayrıntılı doğrulama maddeleri ilgili iş yapılırken buraya eklenecek.
 
