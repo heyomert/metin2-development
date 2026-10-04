@@ -20,7 +20,7 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
 
 ## Her oturumun başında
 
-1. Bu dosyayı, sonra `docs/worklog/README.md`'yi (sadece indeks) oku.
+1. Bu dosyayı, sonra `docs/status.md`'yi (şu an / sıradaki / bekleyen kararlar) ve `docs/worklog/README.md`'yi (sadece indeks) oku. `status.md` eski olabilir: başındaki `git log` komutuyla kontrol et.
 2. Sadece işle ilgili dokümanları aç:
    - `docs/architecture.md` — süreçler, kanallar/çekirdekler, veri akışı, yol sınıflandırması
    - `docs/build-and-run.md` — derleme, paketleme, quest derleme, VM, servis, MariaDB
@@ -53,6 +53,11 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
 - Doküman, yazım hatası, `.gitignore`, geliştirme script'leri → doğrudan commit olur.
 - PR metni: problem · kök neden/kanıt · değişiklik · test · gereken yeniden derleme/paketleme/migration.
 - Aynı PR'da: etkilenen dokümanı güncelle ve açık olmayan bir şey öğrenildiyse worklog kaydı ekle.
+
+## Durum dosyası
+
+- `docs/status.md` her anlamlı iş ya da oturum bitince, **aynı commit'te** güncellenir: üzerine yaz, ekleme yapma, ~25 satırı geçme. Başındaki "Kapsadığı commit"i yeni duruma göre değiştir.
+- Biten maddeyi sil (geçmişi git/worklog tutar); bekleyen kararları ve sıradaki işi kullanıcının göreceği şekilde yaz.
 
 ## Worklog
 
