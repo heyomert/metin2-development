@@ -1,6 +1,3 @@
-# Local test environment (VM scripts, credentials)
-/.acceptance/
-
 # Client runtime output
 /client/log/
 /client/pack/
