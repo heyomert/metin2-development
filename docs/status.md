@@ -1,15 +1,15 @@
 # Durum
 
-Kapsadığı commit: 7b4df27a (2026-10-05). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline 7b4df27a..HEAD -- . ':!docs/status.md'` boş değilse eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: 19d7196e (2026-10-05). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline 19d7196e..HEAD -- . ':!docs/status.md'` boş değilse eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-Faz 1 — güvenlik temeli ve gözlemlenebilirlik (`docs/roadmap.md`). K-1 (P2P firewall): test VM ✅ (PR #5), production ☐.
+Faz 1 — güvenlik temeli (`docs/roadmap.md`). Test VM'de: K-1 P2P firewall ✅ (PR #5), K-3 config adımı ✅ (PR #6). Production ☐.
 
 ## Sıradaki
-1. K-3: yönetim kanalı şifresi ve log'a yazılması
-2. K-2: şifre saklama yöntemi (yüksek risk, önce etki analizi)
-3. Log rotasyonu ve monitoring (roadmap 1.4–1.5)
+1. VM'de server'ı değişiklik yapmadan bir kez derleyip derleme sürecini doğrulamak (A-9)
+2. K-3 kod adımı: şifrenin log'a düşmesini engelle + A-11 (etki analiziyle)
+3. K-2: şifre saklama yöntemi (yüksek risk, önce etki analizi)
 
 ## Senden bekleyen kararlar
 - A-1: hile tespitleri (zaman / saldırı hızı / kombo) sadece logluyor; etkinleştirme politikası
@@ -20,5 +20,5 @@ Faz 1 — güvenlik temeli ve gözlemlenebilirlik (`docs/roadmap.md`). K-1 (P2P 
 `client/assets/root/serverinfo.py` (VM IP'si), `client/config/locale.cfg` (dil)
 
 ## Ortam
-Test VM: `pf` aktif (`deploy/freebsd/pf.conf`), `service m2dev` açılışta başlıyor (4 çekirdek + CH99, P2P mesh tam).
+Test VM: `pf` aktif, `service m2dev` açılışta başlıyor, yönetim şifresi rastgele (repo dışında), `conf/` 750/640.
 GM hesabı `admin` (şifre repo dışında). Açık PR: yok.
