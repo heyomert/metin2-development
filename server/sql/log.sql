@@ -385,7 +385,7 @@ DROP TABLE IF EXISTS `loginlog2`;
 CREATE TABLE `loginlog2` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `type` text DEFAULT NULL,
-  `is_gm` int(11) DEFAULT NULL,
+  `is_gm` enum('Y','N') DEFAULT NULL,
   `login_time` datetime DEFAULT NULL,
   `channel` int(11) DEFAULT NULL,
   `account_id` int(11) DEFAULT NULL,
