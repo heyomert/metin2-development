@@ -51,7 +51,7 @@ proje hafızası. → PR #1–#4, `docs/worklog/`.
 
 | # | İş | Risk / not | Bitti kriteri |
 |---|---|---|---|
-| 1.1 | **P2P portlarını kapat** (K-1) | Kritik. Firewall ve/veya internal IP'ye bağlama; çekirdekler arası iletişim test edilmeli | 12xxx portlarına dışarıdan bağlanılamıyor, warp/çekirdek değişimi çalışıyor |
+| 1.1 | **P2P portlarını kapat** (K-1) — test VM ✅ 2026-10-05; **production ☐** | Kritik. Karar: `pf` firewall (`deploy/freebsd/pf.conf`), kod değişikliği yok. İç IP'ye bağlama reddedildi (db public IP'yi dağıtıyor, warp'ı bozar) — `docs/worklog/2026-10-05-p2p-firewall.md` | Dışarıdan 12xxx'e bağlanılamıyor, çekirdekler arası bağlantılar ve warp çalışıyor, kural açılışta yükleniyor. Production kapısı: `docs/production-checklist.md` K-1 |
 | 1.2 | **Şifre saklama yöntemini modernleştir** (K-2) | Yüksek risk: auth + hesap tablosu + mevcut şifrelerin geçişi. Etki analizi şart | Yeni hesaplar modern hash'le, eski hesaplar girişte kayıpsız geçiyor |
 | 1.3 | Yönetim kanalı şifresi ve log'a yazılması (K-3) | Şifre config'de zayıf, `config.cpp:198` log'a yazıyor | Güçlü şifre, log'da görünmüyor |
 | 1.4 | Log rotasyonu (`newsyslog`) | db her 5 sn'de syslog'a yazıyor | Loglar boyut/süreyle dönüyor, eski loglar arşivleniyor |
@@ -101,7 +101,7 @@ Kanıt durumu: **Kanıtlı** = koddan/ortamdan doğrulandı; **Kısmen**; **Doğ
 
 | ID | Konu | Önem | Kanıt | Faz |
 |---|---|---|---|---|
-| K-1 | P2P soketi public IP'ye bağlanıyor (`server-src/src/game/main.cpp:555`, internal IP seçeneği yorum satırı); gelen P2P bağlantıları kontrolsüz kabul ediliyor (`desc_manager.cpp:108-134`). Çekirdekler bu kanala güveniyor: ör. `GG::SHUTDOWN` alan çekirdek hiçbir kontrol yapmadan 10 sn içinde kapanıyor (`input_p2p.cpp:470-474`) | **Kritik** | Kanıtlı | 1.1 |
+| K-1 | P2P soketi public IP'ye bağlanıyor (`server-src/src/game/main.cpp:555`, internal IP seçeneği yorum satırı); gelen P2P bağlantıları kontrolsüz kabul ediliyor (`desc_manager.cpp:108-134`). Çekirdekler bu kanala güveniyor: ör. `GG::SHUTDOWN` alan çekirdek hiçbir kontrol yapmadan 10 sn içinde kapanıyor (`input_p2p.cpp:470-474`). **Test VM'de `pf` ile dışarıya kapatıldı (2026-10-05); kodda hâlâ kimlik doğrulaması yok, production'da firewall zorunlu** | **Kritik** (production'da) | Kanıtlı; düzeltme VM'de doğrulandı | 1.1 |
 | K-2 | Şifreler MySQL `PASSWORD()` ile (tuzsuz, SHA1 tabanlı) kontrol ediliyor (`server-src/src/game/input_auth.cpp:268`). Giriş sorgusunda escape var (`:240-243`) | **Kritik** | Kanıtlı | 1.2 |
 | K-3 | Yönetim kanalı şifresi zayıf bir değerle config'de; `config.cpp:198` şifreyi log'a yazıyor (seviye 1). Erişim IP listesiyle sınırlı (`ADMINPAGE_IP`) | Yüksek | Kanıtlı | 1.3 |
 | A-1 | Client tarafında hile koruması yok (upstream `63879e03` HackShield/XTrap kaldırdı). Sunucu tarafı kontrollerin yeterliliği incelenmedi | Yüksek | Kısmen | 2 / her özellik |
