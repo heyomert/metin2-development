@@ -1,6 +1,6 @@
 # Roadmap
 
-Son güncelleme: 2026-10-05
+Son güncelleme: 2026-10-05 (açılış tanımı eklendi)
 
 Bu dosya sadece bir istek listesi değil: fazların sırası, birbirine bağımlılıkları, riskleri ve "bitti" kriterleri.
 Açık sorunlar ve teknik borç da burada tutulur. Bir madde tamamlandığında PR/worklog linkiyle işaretlenir.
@@ -10,16 +10,30 @@ Açık sorunlar ve teknik borç da burada tutulur. Bir madde tamamlandığında 
 
 ---
 
-## Açılış tanımı (henüz belirlenmedi)
+## Açılış tanımı
 
-Roadmap'in önceliklerini bu bölüm belirler. Kullanıcıyla birlikte doldurulacak.
+Roadmap'in önceliklerini bu bölüm belirler. Kullanıcının 2026-10-05 tarihli kararları; değişirse burada güncellenir.
 
-- Hedef eşzamanlı oyuncu sayısı (açılışta / 6 ay sonra): —
-- Kanal sayısı ve sunucu donanımı: —
-- Açılışta olacak sistemler: —
-- Açılışta olmayacak (sonraya kalan) sistemler: —
-- Hedef kitle ve dil: —
-- Açılmadan önce geçilmesi gereken kalite eşikleri (ör. X saat yük testi çökmesiz, restore testi başarılı): —
+| Konu | Karar |
+|---|---|
+| Hedef oyuncu | Açılışta **500 tekil oyuncu**. Kişi başı en fazla 3 client → **~1500 bağlantı**; reklam/pazarlamaya göre **~2000 bağlantıya** çıkabilir |
+| Çoklu client kuralı | 1. ve 2. client drop alır; 3. client sadece exp alır; 4. ve sonrası açılamaz (bkz. F-1) |
+| Hedef kitle | Türkiye |
+| Sunucu | Kiralık, profesyonel sunucu (kendi donanım yok). Lag kabul edilmez: savaşlar ve kalabalık mob bölgeleri sorunsuz olmalı |
+| Sistemler | Files tamamen custom olacak. Sistemler kullanıcının vereceği listeye göre kademe kademe eklenecek/güncellenecek (bkz. "Özellik listesi") |
+| Zaman | Zaman hedefi yok. Öncelik kalıcı ve doğru ilerlemek |
+| Test yaklaşımı | Kombinasyonlar test edilir, ama gereksiz yük oluşturulmaz → risk seviyesine göre test (`docs/engineering/change-impact.md`) |
+
+### Bu kararlardan çıkan teknik gereksinimler
+
+| # | Gereksinim | Neden |
+|---|---|---|
+| G-1 | **Kapasite hedefi: 2000 eşzamanlı bağlantı + pay.** Yük testleri en az ~2500–3000 bağlantıyla yapılmalı | Pazarlama tavanı 2000; testin hedefin üstünde olması gerekir |
+| G-2 | **Sıcak nokta testi: tek haritada kalabalık.** Normal haritalar kanallara bölünür, ama savaş/etkinlik haritaları bütün kanallar için **tek çekirdekte** (`channel99_core1`, bkz. A-10). Yük testi "yüzlerce oyuncu aynı savaş haritasında" senaryosunu içermeli | Çekirdek tek thread'li; o haritadaki herkes tek thread'i paylaşır |
+| G-3 | **Donanım seçiminde tek çekirdek (single-thread) performansı** belirleyici; çekirdek sayısı ikinci planda. Kesin donanım, Faz 2 yük testi ölçümleriyle seçilir — tahminle değil | `docs/architecture.md` → "Çalışma modeli" |
+| G-4 | Kiralanacak sunucu: **FreeBSD** desteği (server şu an FreeBSD'de derlenip çalışıyor; Linux'ta çalışması doğrulanmadı), **DDoS koruması**, Türkiye'ye düşük gecikme | A-3; hedef kitle Türkiye |
+| G-5 | **KVKK** kapsamı kesin (Türkiye): IP, e-posta vb. kişisel verilerin saklanma süresi, güvenliği, silinmesi | A-2 |
+| G-6 | **Türkçe içerik:** sunucu quest/sistem metinleri şu an sadece İngilizce | A-6 |
 
 ---
 
@@ -71,6 +85,14 @@ Hazır araçlar (ör. monitoring için Grafana/Prometheus) değerlendirilmeli; p
 ### Faz 4 — Özellik geliştirme
 Her özellik: etki analizi (`docs/engineering/change-impact.md`) + test + monitoring/log + panel ihtiyacı tasarımda düşünülmüş.
 
+## Özellik listesi
+
+Kullanıcı listeyi kademe kademe verecek. Her madde: risk seviyesi, bağımlılıklar, hangi fazdan sonra yapılabileceği.
+
+| ID | Özellik | Risk | Bağımlılık | Not |
+|---|---|---|---|---|
+| F-1 | **Çoklu client sınırı**: kişi başı 3 client; 1–2 drop alır, 3. sadece exp, 4+ engellenir | **Yüksek** (drop/ekonomi + güvenlik) | Faz 1 (monitoring), Faz 2 (regresyon listesi) | Tasarım soruları: "kişi" nasıl tanınacak? Client'tan gelen donanım kimliği (HWID) taklit edilebilir (client'a güvenilmez); IP tek başına yetmez (Türkiye'de CGNAT, internet kafeler, aynı evde birden fazla oyuncu). 1./2./3. client sırası neye göre belirlenir, çıkış/yeniden girişte nasıl değişir? Parti exp paylaşımı, drop'un hangi noktada engelleneceği (yerdeki item, sahiplik), quest ödülleri. Kodlamadan önce etki analizi ve onay |
+
 ---
 
 ## Açık konular
@@ -91,6 +113,7 @@ Kanıt durumu: **Kanıtlı** = koddan/ortamdan doğrulandı; **Kısmen**; **Doğ
 | A-7 | Hukuki durum: Metin2 ve client asset'leri Webzen/Gameforge'un fikri mülkiyeti | Proje düzeyi | — | kullanıcı kararı |
 | A-8 | Upstream'den ayrışma: değişiklikleri izole tut, upstream'e dokunanları işaretle | Orta | — | sürekli |
 | A-9 | Server binary'lerinin derleme komutu belgelenmedi | Düşük | Doğrulanmadı | ilk server C++ değişikliği |
+| A-10 | **Savaş/etkinlik haritaları bütün kanallar için tek çekirdekte**: `channel99_core1` imparatorluk savaşı (181–183, `castle.cpp:421-423`), OX (113), `t1–t4` (103/105/110/111, adlarından savaş/turnuva haritası olduğu tahmin ediliyor), `sungzi` (114, 118–128) haritalarını yüklüyor (`server/channels.py:8-9`, `locale/english/map/index`). Büyük savaşta yük tek thread'de toplanır | **Yüksek** (hedef: lagsız savaş) | Kanıtlı (harita dağılımı); yük etkisi ölçülmedi | Faz 2 yük testi (G-2); sonuca göre CH99'u birden çok çekirdeğe bölmek değerlendirilir |
 
 ## Teknik borç
 
