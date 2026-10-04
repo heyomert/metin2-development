@@ -393,7 +393,7 @@ CREATE TABLE `loginlog2` (
   `client_version` text DEFAULT NULL,
   `ip` text DEFAULT NULL,
   `logout_time` datetime DEFAULT NULL,
-  `playtime` int(11) NOT NULL DEFAULT 0,
+  `playtime` time NOT NULL DEFAULT '00:00:00',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
