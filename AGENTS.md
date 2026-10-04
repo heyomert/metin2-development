@@ -25,10 +25,16 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
    - `docs/architecture.md` — süreçler, kanallar/çekirdekler, veri akışı, yol sınıflandırması
    - `docs/build-and-run.md` — derleme, paketleme, quest derleme, VM, servis, MariaDB
    - `docs/game-facts.md` — level sınırı, imparatorluklar, haritalar, aktif sistemler/zindanlar
+   - `docs/engineering/change-impact.md` — her anlamlı değişiklikten önce etki analizi
+   - `docs/roadmap.md` — fazlar, öncelikler, açık konular (kritik güvenlik bulguları dahil), teknik borç
 3. Bir şey değiştirmeden önce gerçek dosyalarda doğrula. Dokümanlar yönlendirme ve hafızadır, kanıt değildir.
 
 ## Kurallar
 
+- **Bu bir MMORPG: oyunun tamamını düşün.** Anlamlı her değişiklikten önce `docs/engineering/change-impact.md`'deki etki analizini yap ve PR'a ekle. Yüksek riskte (paket, DB şeması, item/yang akışı, çekirdekler arası, db önbelleği, auth) sıra: **analiz → onay → kod**.
+- **Riskli istekte dur.** Yapılabilir ama stabiliteye/performansa/güvenliğe/veri bütünlüğüne zarar verebilecek bir istekte kodlamadan önce riskleri, alternatifleri ve önerini sun.
+- **Client'a güvenme.** Hız, mesafe, miktar, sahiplik gibi kontroller sunucuda. Upstream client hile korumasını kaldırdı.
+- **Çekirdek tek thread'li, db oyuncu verisini önbellekte tutar** (`docs/architecture.md` → "Çalışma modeli"): döngüye yavaş iş koyma; oyuncu verisini veritabanından doğrudan değiştirme.
 - **Varsayım yok.** Her iddiayı `yol:satır`, komut çıktısı, log ya da testle destekle. Gerisini `Unverified` işaretle.
 - **Dosyanın var olması ≠ aktif.** Server `game` build'i klasördeki bütün `.cpp`'leri derler (`GLOB_RECURSE`), bu yüzden aktifliği flag'ler, kayıtlar ve çağrı yolları belirler. Quest'ler ancak `server/share/locale/english/quest/locale_list`'te varsa derlenir.
 - **Client exe her zaman `client-src`'den derlenir.** Upstream'in hazır exe'si kaynaktan eski kaldı ve login'i bozdu (`docs/worklog/2026-10-04-login-input-secret-mode.md`).

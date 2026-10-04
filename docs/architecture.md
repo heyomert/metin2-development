@@ -69,6 +69,47 @@ Başlatma/durdurma: upstream `server/start.py N` / `server/stop.py` (`pids.json`
 - **Giriş kayıtları:** `log.loginlog2` — süre sadece menüden çıkışta yazılır (`server-src/src/game/cmd_general.cpp:277-286`);
   karakter verisi ise her bağlantı kopuşunda kaydedilir (`desc.cpp:107` → `CHARACTER::Disconnect`, `char.cpp:1333`).
 
+## Çalışma modeli
+
+Etki analizinde (`docs/engineering/change-impact.md`) sürekli kullanılan üç gerçek:
+
+| Gerçek | Kanıt | Sonucu |
+|---|---|---|
+| **Her çekirdek tek thread'li** bir olay döngüsüyle çalışır; ek thread'ler sadece asenkron SQL için | Thread oluşturan tek yer `server-src/src/libsql/AsyncSQL.cpp:125` | Çekirdek içinde klasik race/deadlock riski düşük. Asıl risk: döngüdeki yavaş işler (bütün çekirdeği yavaşlatır), çekirdekler arası (P2P/warp) ve db önbelleği zamanlaması |
+| **db oyuncu verisini önbellekte tutar**, varsayılan ~7 dk'da bir yazar (`PLAYER_CACHE_FLUSH_SECONDS`) | `server-src/src/db/Main.cpp:29`, `db/Main.cpp:199`, `db/Cache.cpp:157` | Oyuncu tablolarına veritabanından doğrudan yazmak önbellek tarafından ezilebilir → veri değişikliği oyun/db yolu üzerinden yapılır |
+| **Oyunun düz metin yönetim kanalı var**: `IS_SERVER_UP`, `USER_COUNT`, `NOTICE`, `SHUTDOWN`, `DC`, `BLOCK_CHAT`, `EVENT`, `RELOAD`, `PRIV_EMPIRE`… | `server-src/src/game/input.cpp:240-490`; erişim `ADMINPAGE_IP` listesi + admin şifresi (`game/config.cpp:477-501`) | Yönetim servisi için hazır temel; ama şifrelenmemiş, şifre zayıf ve log'a yazılıyor (`docs/roadmap.md` K-3) |
+
+## Güvenlik yüzeyi
+
+| Bileşen | Dinlediği yer (VM) | Durum |
+|---|---|---|
+| Oyun portları (auth 11000, çekirdekler 11011–11013, 11991) | `192.168.56.20` | Production'da internete açık olacak; DDoS koruması planlanmalı (`docs/roadmap.md` A-3) |
+| **P2P portları (12000, 12011–12013, 12991)** | `192.168.56.20` (public IP'ye bağlanıyor, `game/main.cpp:555`) | **Kimlik doğrulaması yok** (`game/desc_manager.cpp:108-134`, `game/input_p2p.cpp:470-474`). Production'da dışarıya kapatılmalı (`docs/roadmap.md` K-1) |
+| db | `127.0.0.1:9000` | Sadece yerel |
+| MariaDB | `127.0.0.1:3306` | Sadece yerel |
+
+- Auth: şifreler MySQL `PASSWORD()` ile (`game/input_auth.cpp:268`) — zayıf yöntem (`docs/roadmap.md` K-2). Sorguda escape var (`:240-243`).
+- Client'a güvenilmez: upstream client hile korumasını kaldırdı (`63879e03`). Kritik kontroller sunucuda.
+
+## Admin Panel mimari kararı
+
+Karar (2026-10-05, kullanıcıyla): **merkezi yönetim servisi**; oyun sistemleri ondan bağımsız ve önce doğru şekilde kurulur.
+
+```
+Admin Panel (web)
+   │  HTTPS + kimlik doğrulama + yetki + işlem kaydı
+   ▼
+Yönetim servisi  ← panelin konuştuğu TEK yer
+   ├─ Okuma: veritabanından, sadece-okuma yetkili DB kullanıcısıyla (raporlar, loglar, istatistik)
+   ├─ Canlı işlemler: oyunun komut kanalı üzerinden (duyuru, kick, ban, etkinlik, bakım)
+   └─ Çevrimdışı veri işlemleri: sadece hesap çevrimiçi ve db önbelleğinde DEĞİLKEN, işlem kaydıyla
+```
+
+- Panel oyun çekirdeğine gömülmez (paneldeki hata çekirdeği düşürmesin) ve oyuncu tablolarına doğrudan yazmaz (db önbelleği).
+- Yeni oyun sistemleri tasarlanırken "panel bunu nasıl görecek/kontrol edecek?" sorusu **tasarımda** cevaplanır
+  (ayarlar DB'de ya da yeniden yüklenebilir config'te, sistem log üretir, gerekirse komut kanalına komut eklenir).
+  Panel uygulaması sonra gelir (`docs/roadmap.md` Faz 3).
+
 ## Yol sınıflandırması
 
 | Yol ailesi | Sınıf | Not |
