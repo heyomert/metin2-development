@@ -1,0 +1,19 @@
+WELCOME_MSG = "Database connector is running..."
+
+SQL_ACCOUNT 	= "127.0.0.1 account mt2 mt2@pw 0"
+SQL_PLAYER 	= "127.0.0.1 player mt2 mt2@pw 0"
+SQL_COMMON 	= "127.0.0.1 common mt2 mt2@pw 0"
+SQL_HOTBACKUP 	= "127.0.0.1 hotbackup mt2 mt2@pw 0"
+
+TABLE_POSTFIX = ""
+
+BIND_PORT               		= 9000
+CLIENT_HEART_FPS        		= 60
+HASH_PLAYER_LIFE_SEC    		= 600
+BACKUP_LIMIT_SEC        		= 3600
+PLAYER_ID_START 				= 100
+PLAYER_DELETE_LEVEL_LIMIT 		= 70
+PLAYER_DELETE_CHECK_SIMPLE 		= 1
+ITEM_ID_RANGE 					= 2000000000 2100000000
+MIN_LENGTH_OF_SOCIAL_ID			= 6
+SIMPLE_SOCIALID 				= 1

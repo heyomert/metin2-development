@@ -1,0 +1,53 @@
+# Repository metadata must remain byte-stable across platforms
+/.gitattributes text eol=lf
+/COMPONENTS.lock text eol=lf
+
+# Client runtime and editable game assets
+client/**/*.dds filter=lfs diff=lfs merge=lfs -text
+client/**/*.gr2 filter=lfs diff=lfs merge=lfs -text
+client/**/*.raw filter=lfs diff=lfs merge=lfs -text
+client/**/*.tga filter=lfs diff=lfs merge=lfs -text
+client/**/*.wav filter=lfs diff=lfs merge=lfs -text
+client/**/*.atr filter=lfs diff=lfs merge=lfs -text
+client/**/*.mp3 filter=lfs diff=lfs merge=lfs -text
+client/**/*.exe filter=lfs diff=lfs merge=lfs -text
+client/**/*.mde filter=lfs diff=lfs merge=lfs -text
+client/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+client/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+client/**/*.wtr filter=lfs diff=lfs merge=lfs -text
+client/**/*.bmp filter=lfs diff=lfs merge=lfs -text
+client/**/*.wdp filter=lfs diff=lfs merge=lfs -text
+client/**/*.mdatr filter=lfs diff=lfs merge=lfs -text
+client/**/*.spt filter=lfs diff=lfs merge=lfs -text
+client/**/*.db filter=lfs diff=lfs merge=lfs -text
+client/**/*.uvw filter=lfs diff=lfs merge=lfs -text
+client/**/*.scc filter=lfs diff=lfs merge=lfs -text
+client/**/*.sfk filter=lfs diff=lfs merge=lfs -text
+client/**/item_proto filter=lfs diff=lfs merge=lfs -text
+client/**/mob_proto filter=lfs diff=lfs merge=lfs -text
+client/**/server_attr* filter=lfs diff=lfs merge=lfs -text
+
+# Client source vendor and tool binaries
+client-src/**/*.lib filter=lfs diff=lfs merge=lfs -text
+client-src/**/*.png filter=lfs diff=lfs merge=lfs -text
+client-src/**/*.zst filter=lfs diff=lfs merge=lfs -text
+client-src/**/*.aps filter=lfs diff=lfs merge=lfs -text
+client-src/**/*.cur filter=lfs diff=lfs merge=lfs -text
+client-src/**/*.ico filter=lfs diff=lfs merge=lfs -text
+client-src/**/*.res filter=lfs diff=lfs merge=lfs -text
+client-src/**/*.gz filter=lfs diff=lfs merge=lfs -text
+
+# Server runtime binary data and tools
+server/**/server_attr* filter=lfs diff=lfs merge=lfs -text
+server/share/locale/english/quest/qc filter=lfs diff=lfs merge=lfs -text
+server/**/*.exe filter=lfs diff=lfs merge=lfs -text
+server/**/*.tga filter=lfs diff=lfs merge=lfs -text
+server/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+server/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+server/**/*.mde filter=lfs diff=lfs merge=lfs -text
+server/**/*.pyc filter=lfs diff=lfs merge=lfs -text
+
+# Server source documentation/test images
+server-src/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+server-src/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+server-src/**/*.png filter=lfs diff=lfs merge=lfs -text

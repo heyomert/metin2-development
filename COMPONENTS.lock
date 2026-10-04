@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "components": [
+    {
+      "name": "client",
+      "path": "client",
+      "upstream_url": "https://github.com/d1str4ught/m2dev-client.git",
+      "upstream_ref": "refs/heads/main",
+      "commit_sha": "ecef2dcdb89f5d0344677b2902ad175809b70f52",
+      "tree_sha": "1cd6013ae8f97a1a69fd0c34861626ed054f17d0"
+    },
+    {
+      "name": "client-src",
+      "path": "client-src",
+      "upstream_url": "https://github.com/d1str4ught/m2dev-client-src.git",
+      "upstream_ref": "refs/heads/main",
+      "commit_sha": "a7555110828182f20d0a0306aac0552142cf0039",
+      "tree_sha": "7bc37e6426118144041b1e1198fe1c46f6059865"
+    },
+    {
+      "name": "server",
+      "path": "server",
+      "upstream_url": "https://github.com/d1str4ught/m2dev-server.git",
+      "upstream_ref": "refs/heads/main",
+      "commit_sha": "51da06466712e3a0a6fa6422c899a92a813edabc",
+      "tree_sha": "5b7ae51821b6ffb4e5c4d7bfe245d9391cc3a025"
+    },
+    {
+      "name": "server-src",
+      "path": "server-src",
+      "upstream_url": "https://github.com/d1str4ught/m2dev-server-src.git",
+      "upstream_ref": "refs/heads/main",
+      "commit_sha": "21519899adf6ade7937d71b1d9d886d502762a3b",
+      "tree_sha": "0146aada06a2a88687a4f01b7c036ef6a4aae348"
+    }
+  ]
+}

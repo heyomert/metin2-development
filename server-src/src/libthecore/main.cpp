@@ -1,0 +1,119 @@
+﻿#include "stdafx.h"
+#include "memory.h"
+
+#include <atomic>
+
+LPHEART		thecore_heart = NULL;
+
+std::atomic<int> shutdowned = FALSE;
+std::atomic<int> tics = 0;
+unsigned int	thecore_profiler[NUM_PF];
+
+static int pid_init(void)
+{   
+#ifdef OS_WINDOWS
+	return true;
+#else
+	FILE*	fp;
+	if ((fp = fopen("pid", "w")))
+	{
+		fprintf(fp, "%d", getpid());
+		fclose(fp);
+		sys_err("\nStart of pid: %d\n", getpid());
+	}
+	else
+	{
+		printf("pid_init(): could not open file for writing. (filename: ./pid)");
+		sys_err("\nError writing pid file\n");
+		return false;
+	}
+	return true;
+#endif
+}
+
+static void pid_deinit(void)
+{   
+#ifdef OS_WINDOWS
+    return;
+#else
+    remove("./pid");
+	sys_err("\nEnd of pid\n");
+#endif
+}
+
+int thecore_init(int fps, HEARTFUNC heartbeat_func)
+{
+#ifdef OS_WINDOWS
+    srand(time(0));
+#else
+    srandom(time(0) + getpid() + getuid());
+#ifdef OS_FREEBSD
+    srandomdev();
+#endif
+#endif
+
+	log_init();
+    signal_setup();
+
+	if (!pid_init())
+		return false;
+
+	thecore_heart = heart_new(1000000 / fps, heartbeat_func);
+	return true;
+}
+
+void thecore_shutdown()
+{
+    shutdowned.store(TRUE);
+}
+
+int thecore_idle(void)
+{
+    thecore_tick();
+
+    if (shutdowned.load())
+		return 0;
+
+	int pulses;
+	DWORD t = get_dword_time();
+
+	if (!(pulses = heart_idle(thecore_heart)))
+	{
+		thecore_profiler[PF_IDLE] += (get_dword_time() - t);
+		return 0;
+	}
+
+    thecore_profiler[PF_IDLE] += (get_dword_time() - t);
+    return pulses;
+}
+
+void thecore_destroy(void)
+{
+	pid_deinit();
+	log_destroy();
+}
+
+int thecore_pulse(void)
+{
+	return (thecore_heart->pulse);
+}
+
+float thecore_pulse_per_second(void)
+{
+	return ((float) thecore_heart->passes_per_sec);
+}
+
+float thecore_time(void)
+{
+	return ((float) thecore_heart->pulse / (float) thecore_heart->passes_per_sec);
+}
+
+int thecore_is_shutdowned(void)
+{
+	return shutdowned.load();
+}
+
+void thecore_tick(void)
+{
+	++tics;
+}
