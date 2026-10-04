@@ -63,6 +63,15 @@ service m2dev start
 - Doğrulama (dışarıdan, host'tan): `Test-NetConnection 192.168.56.20 -Port 12011` → `False`, `-Port 11011` ve `-Port 22` → `True`.
 - **Production'da aynı kural gerekli:** `docs/production-checklist.md` K-1. Ayrıntı: `docs/worklog/2026-10-05-p2p-firewall.md`.
 
+### Config dosyaları ve yönetim kanalı
+- VM'de `server/share/conf/` (çekirdeklerin `conf` symlink'i buraya bakar) dosyaları `640`, klasör `750` (2026-10-05). Bütün süreçler `root`.
+  `server/perms.py` her şeyi `0o777` yapar; **yeniden çalıştırma**, çalıştırırsan izinleri geri düzelt (`docs/roadmap.md` A-12).
+- `game.txt` → `ADMINPAGE_PASSWORD`: VM'de rastgele değer; kopyası VM'de `/root/.m2dev-admin-channel-password`, host'ta
+  `C:\Users\mertw\.m2dev\secrets\admin-channel-password`. Repodaki `game.txt`'de yer tutucu var — repodan kopyalarsan değeri yeniden ayarla.
+- `ADMINPAGE_IP: 127.0.0.1` — boş bırakma (boşsa şifreyi bilen herkes yönetici olur).
+- Config değişikliği için `service m2dev` yeniden başlatılmalı (çekirdekler config'i açılışta okur).
+- Şifreyi değiştirirken ya da kontrol ederken değeri ekrana basma; özet (`sha256`) ve sayım kullan. Ayrıntı: `docs/worklog/2026-10-05-admin-channel-config.md`.
+
 ### Veritabanı (MariaDB 11.8)
 - **Zorunlu ayar:** `sql_mode=NO_ENGINE_SUBSTITUTION` (upstream şartı: `server-src/README.md:1078`).
   VM'de `/usr/local/etc/mysql/conf.d/zz-acceptance.cnf` içinde.
