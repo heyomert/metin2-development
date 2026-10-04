@@ -84,7 +84,7 @@ Etki analizinde (`docs/engineering/change-impact.md`) sürekli kullanılan üç 
 | Bileşen | Dinlediği yer (VM) | Durum |
 |---|---|---|
 | Oyun portları (auth 11000, çekirdekler 11011–11013, 11991) | `192.168.56.20` | Production'da internete açık olacak; DDoS koruması planlanmalı (`docs/roadmap.md` A-3) |
-| **P2P portları (12000, 12011–12013, 12991)** | `192.168.56.20` (public IP'ye bağlanıyor, `game/main.cpp:555`) | **Kimlik doğrulaması yok** (`game/desc_manager.cpp:108-134`, `game/input_p2p.cpp:470-474`). Production'da dışarıya kapatılmalı (`docs/roadmap.md` K-1) |
+| **P2P portları (12000, 12011–12013, 12991)** | `192.168.56.20` (public IP'ye bağlanıyor, `game/main.cpp:555`) | **Kodda kimlik doğrulaması yok** (`game/desc_manager.cpp:108-134`, `game/input_p2p.cpp:470-474`). Test VM'de `pf` ile dışarıya kapalı (`deploy/freebsd/pf.conf`); **production'da aynı kural zorunlu** (`docs/production-checklist.md` K-1). Çekirdekler birbirine kendi IP'leri üzerinden bağlanır, bu yüzden kural sunucunun kendi IP'sine izin verir |
 | db | `127.0.0.1:9000` | Sadece yerel |
 | MariaDB | `127.0.0.1:3306` | Sadece yerel |
 

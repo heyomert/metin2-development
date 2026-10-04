@@ -27,6 +27,7 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
    - `docs/game-facts.md` — level sınırı, imparatorluklar, haritalar, aktif sistemler/zindanlar
    - `docs/engineering/change-impact.md` — her anlamlı değişiklikten önce etki analizi
    - `docs/roadmap.md` — fazlar, öncelikler, açık konular (kritik güvenlik bulguları dahil), teknik borç
+   - `docs/production-checklist.md` — sunucu açılmadan önce geçilmesi gereken kapılar (P2P firewall dahil)
 3. Bir şey değiştirmeden önce gerçek dosyalarda doğrula. Dokümanlar yönlendirme ve hafızadır, kanıt değildir.
 
 ## Kurallar
@@ -67,5 +68,6 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
 - VM'de MariaDB `sql_mode` ve config dosyası izni → `docs/worklog/2026-10-04-mariadb-sql-mode.md`
 - `start.py` açılışta SIGHUP ile ölüyor → `docs/worklog/2026-10-04-vm-autostart-sighup.md`
 - Server listesindeki "Test" kaydı `127.0.0.1`'e gidiyor, kullanılmıyor; geliştirmede "01. Metin2" seçilir.
+- Çekirdekler arası P2P portları kodda kimlik doğrulamasız; sadece firewall (`deploy/freebsd/pf.conf`) korur. Yeni sunucuda bu kural şart → `docs/production-checklist.md`, `docs/worklog/2026-10-05-p2p-firewall.md`
 
 <!-- M2_LITE_BRAIN_END -->

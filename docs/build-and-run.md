@@ -52,6 +52,17 @@ service m2dev start
 - Durdurmadan önce oyunda kimse olmadığını kontrol et:
   `sockstat -4c | grep -E ":(1101[1-3]|11991|11000) " | grep -v 127.0.0.1`
 
+### Güvenlik duvarı (`pf`)
+- Kural dosyası repoda: `deploy/freebsd/pf.conf` (LF satır sonu şart: `.gitattributes` → `deploy/** text eol=lf`). VM'de `/etc/pf.conf`.
+- Ne yapar: çekirdekler arası **P2P portlarına** (12000–12999) sunucu dışından gelen TCP'yi düşürür. Kodda P2P'nin kimlik
+  doğrulaması yok (`docs/roadmap.md` K-1). Geri kalan trafik (SSH, oyun portları, db) etkilenmez.
+- `/etc/rc.conf`: `pf_enable="YES"`, `pf_rules="/etc/pf.conf"`. Açılışta kendiliğinden yüklenir (2026-10-05'te yeniden başlatmayla doğrulandı).
+- Durum / kural / sayaç: `pfctl -s info`, `pfctl -vsr` (sayaçta engellenen paket sayısı görünür).
+- Kuralı değiştirirken: önce `pfctl -nf /etc/pf.conf` (sözdizimi), sonra otomatik geri alma zamanlayıcısı kur
+  (`daemon -f -p /var/run/pf-rollback.pid sh -c 'sleep 300; pfctl -d'`), yeni SSH bağlantısı çalışınca iptal et.
+- Doğrulama (dışarıdan, host'tan): `Test-NetConnection 192.168.56.20 -Port 12011` → `False`, `-Port 11011` ve `-Port 22` → `True`.
+- **Production'da aynı kural gerekli:** `docs/production-checklist.md` K-1. Ayrıntı: `docs/worklog/2026-10-05-p2p-firewall.md`.
+
 ### Veritabanı (MariaDB 11.8)
 - **Zorunlu ayar:** `sql_mode=NO_ENGINE_SUBSTITUTION` (upstream şartı: `server-src/README.md:1078`).
   VM'de `/usr/local/etc/mysql/conf.d/zz-acceptance.cnf` içinde.
