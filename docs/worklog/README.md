@@ -15,6 +15,7 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-04 | [loginlog2.is_gm 'Y'/'N' vs int](2026-10-04-loginlog2-is-gm.md) | düzeltme / karar | db | Aktif | #2 |
 | 2026-10-04 | [loginlog2.playtime TIME vs int](2026-10-04-loginlog2-playtime.md) | düzeltme / karar | db | Aktif | #3 |
 | 2026-10-05 | [P2P portları kimlik doğrulamasız: pf ile dışarıya kapatma](2026-10-05-p2p-firewall.md) | düzeltme / karar | runtime | Aktif | #5 |
-| 2026-10-05 | [Yönetim kanalı şifresi ve conf izinleri (K-3, config)](2026-10-05-admin-channel-config.md) | düzeltme / ortam | runtime | Aktif | — |
+| 2026-10-05 | [Yönetim kanalı şifresi ve conf izinleri (K-3, config)](2026-10-05-admin-channel-config.md) | düzeltme / ortam | runtime | Aktif | #6 |
+| 2026-10-05 | [Server derleme doğrulandı; MariaDB kütüphanesi farklı ayarla derlenmiş](2026-10-05-server-build-verify.md) | ortam | build | Taşındı → build-and-run.md | — |
 
 <!-- Eski yıllar: README-<yıl>.md -->

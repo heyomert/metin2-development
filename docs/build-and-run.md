@@ -86,9 +86,27 @@ service m2dev start
 - `server/share/locale/english/quest/make.py` sadece `locale_list`'teki quest'leri `qc` ile `object/`'e derler (`make.py:71`).
 - VM'de nasıl çalıştırıldığı kayıtlı değil (Unverified). VM'de `/root/m2dev-acceptance-quest-build.log` var.
 
-### Server binary'lerini derleme
-- Unverified: VM'de `/usr/local/m2dev-acceptance/build` dizini var, ama hangi komutla derlendiği kayıtlı değil.
-  İlk server C++ değişikliğinde doğrulanıp buraya yazılmalı.
+### Server binary'lerini derleme (VM)
+Doğrulandı 2026-10-05: sıfırdan yapılandırma 12 sn, derleme 116 sn (`-j4`), 0 hata, 372 uyarı.
+```sh
+cmake -S /usr/local/m2dev-acceptance/server-src -B /root/build-verify -DCMAKE_BUILD_TYPE=Release
+cmake --build /root/build-verify -j4
+```
+- Çıktı: `<build>/bin/{game,db,qc}`. Derleme çalışan sunucuya **dokunmaz** (çıktı sadece `bin/`'e gider, `server-src/CMakeLists.txt:46`;
+  kopyalama/install adımı yok).
+- Çalışan binary'ler: `/usr/local/m2dev-acceptance/server/share/bin/{game,db,qc}` — kanal klasörlerindeki `channelN_coreM` ve `db`
+  bunlara symlink. Devreye almak = yedek al → servisi durdur → kopyala → servisi başlat → test.
+- VM kaynak ağacı `/usr/local/m2dev-acceptance/server-src`, repodaki `server-src` ile aynı (460 dosyanın içerik özeti eşleşti).
+  Kod değiştirirken önce repodaki değişikliği VM'e taşı, sonra derle.
+- **İki derleme dizini var, farkı bil:**
+  - `/usr/local/m2dev-acceptance/build/server-freebsd`: çalışan binary'ler buradan (4 Ekim). Sunucu kodu `-O3`, ama vendor
+    MariaDB kütüphanesi `-O2 -g` ile derlenmiş (`libmariadbclient.a` 3,5 MB, debug bilgili). Sebebi kayıtlı değil.
+  - `/root/build-verify`: yukarıdaki komutla sıfırdan; her şey `-O3`, MariaDB kütüphanesi debug bilgisiz (0,9 MB).
+  Bu yüzden yeni derlenen `game`/`db` çalışanlardan ~1 MB küçük; sunucu kodu aynı, fark MariaDB kütüphanesinin derleme ayarı.
+  **İlk devreye almada** bu fark da gelir: DB bağlantısı (giriş, karakter yükleme/kaydetme) mutlaka test edilmeli.
+- Debug bilgisi kararı: çökme analizinde (roadmap 1.7) debug bilgili binary işe yarar. `Release` debug bilgisi içermiyor;
+  `RelWithDebInfo` ya da ayrı sembol dosyası değerlendirilmeli — henüz karar verilmedi.
+- Yedek: çalışan binary'lerin kopyası ve özetleri VM'de `/root/build-baseline-2026-10-05/`.
 
 ## Test ortamı
 
