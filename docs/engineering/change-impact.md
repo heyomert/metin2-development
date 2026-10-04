@@ -89,6 +89,22 @@ Genel Metin2 bilgisi kanıt değildir.
 
 ## PR'a eklenecek kısa biçim
 
+Amaç formu doldurmak değil, **bilinmeyenleri görünür kılmak.** Analiz yapılmadan doldurulmuş form, hiç doldurulmamış formdan daha kötüdür.
+
+**Ne kadar doldurulur (risk seviyesine göre, §1):**
+- **Düşük:** sadece ilk satır (`Risk: Düşük`) ve 1–3 satır özet. Alanların hepsini doldurma.
+- **Orta:** ilgili alanları doldur; ilgisizleri tek satırda `Etkilenmiyor — <neden>` yap.
+- **Yüksek:** bütün alanlar.
+
+**Her alan şu üç cevaptan biri olmalı. Boş bırakılmaz, tahminle doldurulmaz:**
+1. **Kanıtlı cevap:** kısa cevap + kanıt (`yol:satır`, log satırı, test sonucu).
+2. **`Etkilenmiyor — <neden>`:** neden zorunlu. Tek başına "yok" ya da "N/A" geçersiz, çünkü "düşünüldü mü, atlandı mı" anlaşılmaz.
+3. **`Bilinmiyor — <neyi kontrol ettim; nasıl öğrenilir>`.** "Sorun olmaz" gibi kanıtsız bir cümle yazmaktan her zaman iyidir.
+
+**`Bilinmiyor` kuralı:** Yüksek riskli işte `Regresyon`, `Crash`, `Yük`, `Güvenlik`, `Ekonomi/dupe`, `Migration/uyum`, `Rollback` ya da
+`Test` alanlarından biri `Bilinmiyor` ise önce araştır; araştırmayla kapanmıyorsa kullanıcıya sor. **`Bilinmiyor` ile koda geçme.**
+Düşük/Orta riskte `Bilinmiyor` PR'da açıkça kalabilir.
+
 ```text
 Etki analizi — Risk: Düşük | Orta | Yüksek
 Etkilenen: …            Bağlı sistemler: …
@@ -99,4 +115,24 @@ Rollback: …             Test: …
 Monitoring/log: …       Panel: …
 Doküman: …              Teknik borç: …
 Alternatif değerlendirildi mi: …
+```
+
+**Örnek** (PR #5, P2P firewall; üç cevap biçimi de görünüyor):
+
+```text
+Etki analizi — Risk: Yüksek
+Etkilenen: runtime ağ, P2P portları 12000–12999 (deploy/freebsd/pf.conf); oyun/db kodu değişmedi
+Bağlı sistemler: çekirdekler arası mesajlar (input_p2p.cpp), transfer/notice
+Regresyon riski: P2P bozulabilirdi → yeniden başlatmada 4 çekirdek arası tam mesh kuruldu, /transfer log'dan doğrulandı
+Crash riski: Etkilenmiyor — kod değişmedi, sadece paket filtresi
+Yük (CPU/RAM/ağ/DB): Bilinmiyor — gelen her paket tek kurala karşı değerlendirilir; yük altında ölçülmedi (Faz 2 yük testi). Kullanıcı bilerek onayladı
+Güvenlik/exploit: K-1 kapandı (VM); kodda kimlik doğrulaması hâlâ yok → production'da kural zorunlu
+Ekonomi/dupe: Etkilenmiyor — item/yang akışına dokunulmadı
+Migration: Gerekmiyor / Eski veriyle uyum: Etkilenmiyor — veri değişmedi
+Rollback: `pfctl -d` (anında); kural dosyası repoda
+Test: dışarıdan TCP ölçümü, VM yeniden başlatma, iki client'lı oyun testi
+Monitoring/log: `pfctl -vsr` sayacı; Bilinmiyor — engellenen denemelerin log'a yazılması değerlendirilmedi (roadmap 1.5)
+Panel: Etkilenmiyor — panel henüz yok (Faz 3); engellenen deneme sayısı ileride aday sinyal
+Doküman: güncellendi (production-checklist, worklog, architecture)   Teknik borç: kural production'da ayrıca kurulmalı
+Alternatif değerlendirildi mi: evet — iç IP'ye bağlama reddedildi (db public IP'yi dağıtıyor)
 ```

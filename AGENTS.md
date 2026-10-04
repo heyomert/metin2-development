@@ -32,7 +32,7 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
 
 ## Kurallar
 
-- **Bu bir MMORPG: oyunun tamamını düşün.** Anlamlı her değişiklikten önce `docs/engineering/change-impact.md`'deki etki analizini yap ve PR'a ekle. Yüksek riskte (paket, DB şeması, item/yang akışı, çekirdekler arası, db önbelleği, auth) sıra: **analiz → onay → kod**.
+- **Bu bir MMORPG: oyunun tamamını düşün.** Anlamlı her değişiklikten önce `docs/engineering/change-impact.md`'deki etki analizini yap ve PR'a ekle. Yüksek riskte (paket, DB şeması, item/yang akışı, çekirdekler arası, db önbelleği, auth) sıra: **analiz → onay → kod**. Derinlik risk seviyesine göre; her alan kanıtlı cevap, `Etkilenmiyor — neden` ya da `Bilinmiyor — ne kontrol edildi` olur, tahminle doldurulmaz; yüksek riskte kritik alan `Bilinmiyor` ise koda geçme.
 - **Riskli istekte dur.** Yapılabilir ama stabiliteye/performansa/güvenliğe/veri bütünlüğüne zarar verebilecek bir istekte kodlamadan önce riskleri, alternatifleri ve önerini sun.
 - **Client'a güvenme.** Hız, mesafe, miktar, sahiplik gibi kontroller sunucuda. Upstream client hile korumasını kaldırdı.
 - **Çekirdek tek thread'li, db oyuncu verisini önbellekte tutar** (`docs/architecture.md` → "Çalışma modeli"): döngüye yavaş iş koyma; oyuncu verisini veritabanından doğrudan değiştirme.
