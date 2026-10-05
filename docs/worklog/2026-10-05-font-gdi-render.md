@@ -71,8 +71,11 @@ Upstream'in FreeType öncesi GDI yolu temel alındı, sonradan gelen düzeltmele
   (`client/assets/root/uitooltip.py:86-88`); renkler değişmedi. Bonussuz item'ların krem başlığı Anka2 ile aynı kural
   (`uitooltip.py:905-913`).
 - Çalışan client'ta GDI nesnesi 66 (tepe 68), sınır 10.000 (`GetGuiResources`, karakter seçim ekranı).
-- **Yapılamadı:** farklı çözünürlük / tam ekran / alt-tab (cihaz sıfırlama yolu). `config.exe` ayarları client'ın
-  okumadığı dosyaya yazıyor (roadmap → Teknik borç); yeni `config.exe` ile test edilecek.
+- Çözünürlük / tam ekran / alt-tab (kullanıcı, 2026-10-05, kaynaktan derlenen yeni `config.exe` ile): 1920×1080 ve
+  1366×768 tam ekranda yazılar net ve konturlu; tam ekranda alt-tab sonrası (cihaz sıfırlama yolu) yazılar bozulmadı.
+  Eski `config.exe` ayarları client'ın okumadığı dosyaya yazdığı için bu test önce yapılamamıştı (roadmap → Teknik borç).
+- Görev listesinde uzun adların yan sütuna taşması bu değişiklikten önce de var (sabit 100 px sütun,
+  `client/assets/root/interfacemodule.py:1375`); font ile ilgisiz.
 
 
 ## Bir dahaki sefere tuzaklar

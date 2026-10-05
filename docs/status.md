@@ -8,8 +8,7 @@ Yazı çizimi Anka2/orijinal görünüme döndü (GDI + 1-bit eşik), PR #9 aç�
 
 ## Sıradaki
 1. `config.exe`'yi kaynaktan yeniden yaz (`client-src/src/Config`); eskisi ayarları yanlış dosyaya yazıyor (roadmap → Teknik borç)
-2. Yeni `config.exe` ile font PR'ının çözünürlük / tam ekran / alt-tab testi
-3. Monitoring ve log saklama kararı (roadmap 1.4–1.5), DB yedeği + restore (1.6), core dump (1.7)
+2. Monitoring ve log saklama kararı (roadmap 1.4–1.5), DB yedeği + restore (1.6), core dump (1.7)
 
 ## Senden bekleyen kararlar
 - Font PR #9: inceleme ve merge
