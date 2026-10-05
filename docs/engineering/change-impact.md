@@ -47,6 +47,13 @@ Emin değilsen bir üst seviyeyi seç.
 **Doğrulama ve işletim**
 13. Nasıl test edilecek? (oyun içi senaryo, log kontrolü, regresyon listesi, yük)
 14. Monitoring ya da log eklemek gerekiyor mu? Sorun çıkarsa nasıl fark edeceğiz?
+    Game ana döngüsünde çalışan kod sağlık kaydında kendiliğinden görünür (`docs/monitoring.md`: `event_us`,
+    `chr_us`, `io_us`, `hb_us`, `work_max_us`, `iter_gap_max_us`). Sağlık kaydı şu durumlarda güncellenir:
+    - `main.cpp` `idle()`/`heartbeat()` değişiyor (upstream güncellemesi dahil) → ölçüm noktaları yeniden kontrol edilir
+    - iş ana döngünün dışında (yeni thread, süreç, servis) → kendi sağlığı için ayrı ölçüm
+    - özelliğe özel bir sayı gerekiyor → satırın sonuna yeni alan + `docs/monitoring.md` tablosu (alanlar adıyla
+      okunur, `schema` sadece mevcut bir alanın anlamı/biçimi değişirse artar)
+    - `PASSES_PER_SEC` değişiyor → tur bütçesi (16,7 ms) ve `tools/metrics/m2metrics.py` `STALL_GAP_US` güncellenir
 15. Admin Panel / yönetim servisi tarafında kontrol ya da gözlem gerektiriyor mu? (ayar, komut, log)
 
 **Uzun vade**
