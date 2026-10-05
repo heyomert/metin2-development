@@ -222,6 +222,16 @@ ACMD(do_block_chat);
 
 int CInputHandshake::HandleText(LPDESC d, const char * c_pData)
 {
+	// Port security: only ADMINPAGE_IP may use the text command channel. This is the
+	// original Metin2 ENABLE_PORT_SECURITY check that upstream removed in 5c9ae80b.
+	// Fail closed (an empty allow-list blocks everyone) and never log the payload.
+	if (IsEmptyAdminPage() || !IsAdminPage(inet_ntoa(d->GetAddr().sin_addr)))
+	{
+		sys_log(0, "SOCKET_CMD: BLOCK FROM(%s)", d->GetHostName());
+		d->SetPhase(PHASE_CLOSE);
+		return 0;
+	}
+
 	c_pData += PACKET_HEADER_SIZE; // skip [header:2][length:2]
 	const char * c_pSep;
 
@@ -235,7 +245,9 @@ int CInputHandshake::HandleText(LPDESC d, const char * c_pData)
 	std::string stBuf;
 	stBuf.assign(c_pData, 0, c_pSep - c_pData);
 
-	sys_log(0, "SOCKET_CMD: FROM(%s) CMD(%s)", d->GetHostName(), stBuf.c_str());
+	// Never write the admin password to the log.
+	const bool bIsAdminPassword = (stBuf == g_stAdminPagePassword);
+	sys_log(0, "SOCKET_CMD: FROM(%s) CMD(%s)", d->GetHostName(), bIsAdminPassword ? "<admin password>" : stBuf.c_str());
 
 	if (!stBuf.compare("IS_SERVER_UP"))
 	{
@@ -515,7 +527,7 @@ int CInputHandshake::HandleText(LPDESC d, const char * c_pData)
 		}
 	}
 
-	sys_log(1, "TEXT %s RESULT %s", stBuf.c_str(), stResult.c_str());
+	sys_log(1, "TEXT %s RESULT %s", bIsAdminPassword ? "<admin password>" : stBuf.c_str(), stResult.c_str());
 	stResult += "\n";
 	d->Packet(stResult.c_str(), stResult.length());
 	return (c_pSep - c_pData) + 1;

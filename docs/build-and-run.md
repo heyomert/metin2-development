@@ -99,14 +99,17 @@ cmake --build /root/build-verify -j4
 - VM kaynak ağacı `/usr/local/m2dev-acceptance/server-src`, repodaki `server-src` ile aynı (460 dosyanın içerik özeti eşleşti).
   Kod değiştirirken önce repodaki değişikliği VM'e taşı, sonra derle.
 - **İki derleme dizini var, farkı bil:**
-  - `/usr/local/m2dev-acceptance/build/server-freebsd`: çalışan binary'ler buradan (4 Ekim). Sunucu kodu `-O3`, ama vendor
-    MariaDB kütüphanesi `-O2 -g` ile derlenmiş (`libmariadbclient.a` 3,5 MB, debug bilgili). Sebebi kayıtlı değil.
-  - `/root/build-verify`: yukarıdaki komutla sıfırdan; her şey `-O3`, MariaDB kütüphanesi debug bilgisiz (0,9 MB).
-  Bu yüzden yeni derlenen `game`/`db` çalışanlardan ~1 MB küçük; sunucu kodu aynı, fark MariaDB kütüphanesinin derleme ayarı.
-  **İlk devreye almada** bu fark da gelir: DB bağlantısı (giriş, karakter yükleme/kaydetme) mutlaka test edilmeli.
+  - `/usr/local/m2dev-acceptance/build/server-freebsd`: 4 Ekim derlemesi. Sunucu kodu `-O3`, ama vendor MariaDB kütüphanesi
+    `-O2 -g` ile derlenmiş (`libmariadbclient.a` 3,5 MB, debug bilgili). Sebebi kayıtlı değil. **Artık kullanılmıyor.**
+  - `/root/build-verify`: yukarıdaki komutla sıfırdan; her şey `-O3`, MariaDB kütüphanesi debug bilgisiz (0,9 MB). **Bundan sonra burada derle.**
+- **Şu an çalışan binary'ler (2026-10-05):** `game` → `/root/build-verify` (K-3 port güvenliği + log maskeleme, PR'da);
+  `db` ve `qc` → hâlâ 4 Ekim derlemesi (değişmedi). İlk devreye almada giriş, karakter yükleme/kaydetme, harita geçişi test edildi: sorun yok.
+- VM kaynak dosyaları: değiştirdiğin dosyayı VM'e LF olarak kopyala (`tr -d '\r' < dosya | ssh bsd "cat > hedef"`), sonra özetleri
+  karşılaştır. VM'deki diğer kaynak dosyalar CRLF (Windows checkout'tan); derleyici için fark etmez.
 - Debug bilgisi kararı: çökme analizinde (roadmap 1.7) debug bilgili binary işe yarar. `Release` debug bilgisi içermiyor;
   `RelWithDebInfo` ya da ayrı sembol dosyası değerlendirilmeli — henüz karar verilmedi.
-- Yedek: çalışan binary'lerin kopyası ve özetleri VM'de `/root/build-baseline-2026-10-05/`.
+- Yedekler (VM): 4 Ekim binary'leri ve özetleri `/root/build-baseline-2026-10-05/`; K-3 öncesi kaynak dosyaları `/root/k3-code-backup/`.
+  Geri dönüş: servisi durdur → `cp /root/build-baseline-2026-10-05/game /usr/local/m2dev-acceptance/server/share/bin/game` → başlat.
 
 ## Test ortamı
 
