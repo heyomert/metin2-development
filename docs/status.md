@@ -1,13 +1,13 @@
 # Durum
 
-Kapsadığı commit: df56b388 (2026-10-05). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline df56b388..HEAD -- . ':!docs/status.md'` boş değilse eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: 36c33135 (2026-10-05). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline 36c33135..HEAD -- . ':!docs/status.md'` boş değilse eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-Faz 1 — güvenlik temeli (`docs/roadmap.md`). Test VM'de: K-1 P2P firewall ✅ (PR #5), K-3 config + kod ✅ (PR #6, #7). Production ☐.
+Faz 1 — güvenlik temeli (`docs/roadmap.md`). Test VM'de: K-1 P2P firewall ✅ (PR #5), K-3 config + kod ✅ (PR #6, #7), K-2 A ✅ (kısıtlar belgelendi). Production ☐.
 
 ## Sıradaki
-1. K-2: şifre saklama yöntemi (yüksek risk, önce read-only araştırma + etki analizi)
+1. K-2 B: aynı şifre özetini C++'ta üret (plan: docs/worklog/2026-10-05-k2-password-review.md) — onay bekliyor
 2. Monitoring ve log saklama kararı (roadmap 1.4–1.5; rotasyon kodda var, 7 gün, arşivler `644`)
 3. DB yedeği + restore testi (roadmap 1.6)
 
