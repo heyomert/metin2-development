@@ -4,7 +4,7 @@
 - **Tür:** düzeltme / karar
 - **Alan:** client-src
 - **Durum:** Aktif
-- **PR / commit:** <PR linki>
+- **PR / commit:** [#9](https://github.com/heyomert/metin2-development/pull/9)
 
 ## Problem / hedef
 Oyundaki yazılar soluk, kenarları bulanık; kontur katı siyah değil. Hedef: oyunun her yerinde Anka2'deki gibi
@@ -45,7 +45,7 @@ net yazı ve katı siyah kontur.
 - **Kerning'i GDI ile (`GetKerningPairs`) korumak:** Anka2/orijinal client kerning yapmıyor; görüntü farklı olur.
 
 ## Çözüm
-Upstream'in FreeType öncesi GDI yolu temel alındı, sonradan gelen düzeltmeler korundu (PR):
+Upstream'in FreeType öncesi GDI yolu temel alındı, sonradan gelen düzeltmeler korundu (PR #9):
 - `GrpDIB`: kendi bellek DC'si olan 32-bit DIB section.
 - `GrpFontTexture`: GDI ile harf çizimi, sayfa yüklenirken 1-bit eşik, `A4R4G4B4`. Taşan harfler için hücreye sol
   pay + `bearingX` (taşmayan harflerde görüntü orijinalle aynı). Cihaz sıfırlanınca harfler yeniden çizilir;
