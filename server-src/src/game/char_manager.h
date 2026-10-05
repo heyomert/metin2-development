@@ -38,6 +38,11 @@ class CHARACTER_MANAGER : public singleton<CHARACTER_MANAGER>
 
 		void			Update(int iPulse);
 
+		// O(1) sizes for server metrics (server_metrics.cpp)
+		size_t			GetCharacterCount() const		{ return m_map_pkChrByVID.size(); }
+		size_t			GetPCCount() const				{ return m_map_pkPCChr.size(); }
+		size_t			GetStateCharacterCount() const	{ return m_set_pkChrState.size(); }	// PCs and NPCs with a running state machine
+
 		LPCHARACTER		SpawnMob(DWORD dwVnum, long lMapIndex, long x, long y, long z, bool bSpawnMotion = false, int iRot = -1, bool bShow = true);
 		LPCHARACTER		SpawnMobRange(DWORD dwVnum, long lMapIndex, int sx, int sy, int ex, int ey, bool bIsException=false, bool bSpawnMotion = false , bool bAggressive = false);
 		LPCHARACTER		SpawnGroup(DWORD dwVnum, long lMapIndex, int sx, int sy, int ex, int ey, LPREGEN pkRegen = NULL, bool bAggressive_ = false, LPDUNGEON pDungeon = NULL);

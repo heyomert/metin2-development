@@ -1,28 +1,27 @@
 # Durum
 
-Kapsadığı commit: PR #11 merge'ü (2026-10-05; taban e47ffde2 = PR #10 merge). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline e47ffde2..HEAD -- . ':!docs/status.md'` PR #11 dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: `feat/server-metrics` dalı (2026-10-05; taban 0b6d9f00). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline 0b6d9f00..HEAD -- . ':!docs/status.md'` bu daldan başka bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-Yazı çizimi Anka2/orijinal görünümde (PR #9 merge). `config.exe` kaynaktan yeniden yazıldı, tam ekranda frekans/MSAA hatası düzeltildi (PR #10 merge). Zemin netliği: DX9 geçişinde kaybolan 4x anizotropi geri geldi (PR #11 merge). Faz 1 güvenlik kalemleri test VM'de tamam (PR #5–#8). Production ☐.
+Sunucu sağlık kaydı (roadmap 1.5, 1. adım) test VM'de çalışıyor: game süreçleri 10 sn'de bir `log/metrics_<gün>.log` yazıyor, 14 gün saklanıyor. Okuma: `docs/monitoring.md`; özet: `tools/metrics/m2metrics.py`. Test sonuçları ve VM olayı (askıya alma → Aria kaydı bozuldu, kurtarıldı): `docs/worklog/2026-10-05-server-metrics.md`. Önceki işler (font, config.exe, anizotropi, Faz 1 güvenlik) merge'lü. Production ☐.
 
 ## Sıradaki
-1. Monitoring ve log saklama kararı (roadmap 1.4–1.5)
-2. DB yedeği + restore testi (1.6), core dump + çökme uyarısı (1.7)
+1. Metrik dalı: PR + merge (onayınla)
+2. Monitoring 2. adım: süreç RAM/CPU, db süreci, grafik (Prometheus/Grafana → VM'e paket kurulumu, ayrı onay)
+3. DB yedeği + restore testi (1.6): bu oturumdaki Aria olayı gerekliliğini gösterdi; core dump + çökme uyarısı (1.7)
 
 ## Senden bekleyen kararlar
+- `heart_idle` gecikmede fazladan pulse sayıyor (roadmap teknik borç): yük testinden önce etki analizi yapılsın mı
 - Görev listesinde uzun adların yan sütuna taşması (`client/assets/root/interfacemodule.py:1375`, sabit 100 px): düzeltilsin mi
 - `vendor/freetype-2.13.3`: build'den çıktı, silinsin mi (öneri: şimdilik kalsın, `tools/font-compare` kullanıyor)
 - Client DPI-unaware (%125+ ölçekte bulanık): etki analizi yapılsın mı
 - A-1 hile tepki politikası; özellik listesi (F-1 dahil); production sunucu sağlayıcısı (G-3, G-4)
 
-## Kararlar (2026-10-05)
-Pencere modunda MSAA (`EterLib/GrpDevice.cpp:402`), ağaçlarda en iyi filtre, UI ölçekleme: production öncesi yapılmayacak; oyunun davranışını değiştiriyorlar, ihtiyaç doğarsa ölçerek ele alınır.
-
 ## Yerelde bilerek commit'lenmeyenler
 `client/assets/root/serverinfo.py` (VM IP'si), `client/config/locale.cfg` (dil), `client/config/metin2.cfg`'deki kişisel ayarlar
 
 ## Ortam
-Test VM: `pf` aktif, yönetim şifresi rastgele, `conf/` 750/640. `game` → `/root/build-verify` (K-3 + K-2 B), `db`/`qc` → 4 Ekim derlemesi.
-GM hesabı `admin` (şifre repo dışında). Geri dönüş binary'leri: `/root/build-baseline-k3/`, `/root/build-baseline-2026-10-05/`.
-Client derlemesi bu makinede `/m:1` ile (paralelde bellek yetmiyor). `Metin2.exe` yönetici yetkisiyle çalışır.
+Test VM: `pf` aktif, yönetim şifresi rastgele, `conf/` 750/640. `game` → `/root/build-verify` (K-3 + K-2 B + metrics), `db`/`qc` → 4 Ekim derlemesi. Metrik öncesi `game` binary'sinin yedeği VM olayında kayboldu: geri dönüş `METRICS_ENABLE: 0` ya da `main`'den yeniden derleme.
+VM'de MariaDB'nin kurtarma öncesi (bozuk hâliyle) soğuk kopyası: `/root/mysql-cold-backup-20261005-postcrash`. Windows'u yeniden başlatmadan önce VM'i kapat (`ssh bsd shutdown -p now`).
+GM hesabı `admin` (şifre repo dışında). Client derlemesi `/m:1` ile. `Metin2.exe` yönetici yetkisiyle çalışır.

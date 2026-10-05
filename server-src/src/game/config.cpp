@@ -23,6 +23,7 @@ using std::string;
 BYTE	g_bChannel = 0;
 WORD	mother_port = 50080;
 int		passes_per_sec = 25;
+bool	g_bMetricsEnable = true;	// METRICS_ENABLE in conf/game.txt, see docs/monitoring.md
 WORD	db_port = 0;
 WORD	p2p_port = 50900;
 char	db_addr[ADDRESS_MAX_LEN + 1];
@@ -531,6 +532,14 @@ void config_init(const string& st_localeServiceName)
 		TOKEN("passes_per_sec")
 		{
 			str_to_number(passes_per_sec, value_string);
+			continue;
+		}
+
+		TOKEN("metrics_enable")
+		{
+			int iEnable = 1;
+			str_to_number(iEnable, value_string);
+			g_bMetricsEnable = iEnable != 0;
 			continue;
 		}
 

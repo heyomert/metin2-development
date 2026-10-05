@@ -94,3 +94,10 @@ bu kodu içerdiğini doğrular.
 - [ ] Sunucu açılışta kendiliğinden başlıyor (`service m2dev` ya da eşdeğeri) ve `start.py` konsola bağlı süreç bırakmıyor (`docs/worklog/2026-10-04-vm-autostart-sighup.md`)
 - [ ] Client `serverinfo.py` üretim sunucusunu gösteriyor; "02. Test" kaydı kaldırıldı ya da gerçek bir test sunucusuna yönlendirildi
 - [ ] Client exe `client-src`'den derlenmiş, hazır upstream exe değil
+
+## Gözlemlenebilirlik (Faz 1.5)
+
+- [ ] Sunucu makinesinde saat okuma maliyeti ölçüldü (`tools/metrics/clock-cost.cpp`) ve `sysctl kern.timecounter.hardware`
+      kaydedildi. Test VM'de ACPI-fast ile okuma ~11,6 µs, metrik maliyeti süreç başına bir çekirdeğin ~%0,6'sı
+      (`docs/monitoring.md` → Ölçüm maliyeti). Okuma ~1 µs'nin üstündeyse `METRICS_ENABLE` ve bölüm sayısı yeniden değerlendirilir.
+- [ ] Her game sürecinde `log/metrics_<gün>.log` yazılıyor, `metrics_dropped` ve `metrics_write_errors` 0.

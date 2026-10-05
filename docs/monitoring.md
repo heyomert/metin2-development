@@ -1,0 +1,122 @@
+# Sunucu sağlık kaydı (server metrics)
+
+Her `game` süreci (auth dahil; db hariç) 10 saniyede bir tek satırlık sağlık kaydı yazar. Amaç: production'a geçmeden
+önce sunucuyu gözlemlenebilir yapmak, lag/stabilite olaylarını sonradan kanıtla teşhis edebilmek ve yük testini
+okuyabilmek. Kaynak: `server-src/src/game/server_metrics.{h,cpp}`, `server-src/src/game/metrics_daily_sink.h`;
+karar ve testler: `docs/worklog/2026-10-05-server-metrics.md`.
+
+**Agent'lar için:** "lag var mıydı / sunucu ne durumda" sorusuna önce buradan bak; serbest metin log'u (`syslog.log`)
+bu soruyu cevaplamaz. Özet: `python3 tools/metrics/m2metrics.py --hours 1` (VM'de, salt okunur).
+
+## Dosyalar
+- Yol: her sürecin klasöründe `log/metrics_YYYY-MM-DD.log` (ör. `server/channels/channel1/core1/log/`).
+  Aktif dosya yok, gün değişince yeni dosyaya geçilir (sürecin yerel saatiyle).
+- Saklama: bugün + önceki 14 gün; daha eskisi her günün ilk satırında silinir. İlgisiz dosyalara dokunulmaz.
+- Boyut (test VM'de ölçüldü, ~1.000 satır): satır 401–417 bayt, günde 8.640 satır → süreç başına ~3,4 MB/gün;
+  5 süreç × 15 dosya ≈ 260 MB.
+- Kişisel veri yok (IP, hesap, karakter adı yazılmaz).
+
+## Açma / kapama
+`conf/game.txt`: `METRICS_ENABLE: 0` → metrikler kapalı, ölçüm kodu tamamen atlanır (yeniden başlatma gerekir).
+Satır yoksa varsayılan `1`. Açılışta `syslog.log`'a `METRICS: enabled ...` ya da `METRICS: disabled ...` yazılır.
+
+## Satır biçimi
+```
+2026-10-05T19:30:14+0300 schema=1 host=channel1_1 ch=1 port=11011 pid=4242 uptime_s=600 window_ms=10003 users_local=1 ...
+```
+İlk alan yerel zaman (`%Y-%m-%dT%H:%M:%S%z`), gerisi `anahtar=değer`. **Alanları adıyla oku, sırayla değil**; yeni alan
+eklenebilir, biçim değişirse `schema` artar.
+
+## Alanlar
+Pencere alanları son `window_ms` içindeki toplamdır; anlık alanlar satırın yazıldığı andaki değerdir. Pencere, 10 sn
+dolduktan sonraki ilk tur başında (`heart_idle` döndükten hemen sonra) kapanır: o an dönen pulse'lar önceki turun
+süresini kapsadığı için kapanan pencereye eklenir, böylece uzun bir tur ve yol açtığı gecikme aynı satırda görünür.
+
+| Alan | Birim | Anlamı | Kaynak |
+|---|---|---|---|
+| `schema` | — | Biçim sürümü (şu an 1) | `server_metrics.cpp` `Emit` |
+| `host`, `ch`, `port` | — | `HOSTNAME`, `CHANNEL`, `PORT` (sürecin `CONFIG`'i); boşluk/`=` → `_` | `g_stHostname`, `g_bChannel`, `mother_port` (`game/config.cpp`) |
+| `pid`, `uptime_s` | —, sn | Süreç kimliği ve metrik başlangıcından beri süre; `pid` değişmesi = yeniden başlatma | — |
+| `window_ms` | ms | Pencerenin **gerçek** süresi (hedef 10.000; duraklama/yük varsa uzar) | monoton saat |
+| `users_local` | adet | Bu süreçte karakteri olan bağlantı. ~5 sn'de bir güncellenir (`main.cpp` heartbeat, `UpdateLocalUserCount`) | `desc_manager.cpp` `FuncWho` |
+| `descs_total` | adet | Bütün bağlantılar: oyuncu + çekirdekler arası P2P + db/connector | `desc_manager.cpp` `AcceptDesc`/`AcceptP2PDesc`/`CreateConnectionDesc` |
+| `chars_total` | adet | Bütün karakterler (oyuncu, mob, NPC…) | `CHARACTER_MANAGER::m_map_pkChrByVID` |
+| `pcs` | adet | Oyuncu karakterleri | `m_map_pkPCChr` |
+| `fsm_chars` | adet | Durum makinesi çalışan karakterler (oyuncu **ve** mob/NPC; "aktif mob" değildir) | `m_set_pkChrState`, `char.cpp` `UpdateStateMachine` |
+| `iters` | adet | Ana döngü turu | `main.cpp` `idle` |
+| `pulses` | adet | İşlenen pulse; ≈ `PASSES_PER_SEC` × süre. Gecikme olan pencerede bundan **fazla** olabilir (aşağıda "`heart_idle` fazla sayar") | `PASSES_PER_SEC: 60` (`server/share/conf/game.txt`) |
+| `late_pulses` | adet | Gecikme yüzünden telafi edilen pulse toplamı (Σ geçen−1). Oyunun yaşadığı lag | `libthecore/heart.cpp` `heart_idle` |
+| `late_iters` | adet | Gecikme yaşanan tur sayısı | — |
+| `max_late_pulses` | adet | Tek seferdeki en büyük gecikme; gecikme ≥ değer × 16,7 ms (`PASSES_PER_SEC: 60`). 30 sn üstü `heart_idle`'da 1800'e kırpılır (`syserr`: `losing N seconds`) | `heart.cpp:78-82` |
+| `work_us` | µs | Turların iş süresi toplamı (uyku hariç) | `thecore_idle` dönüşü → `io_loop` sonu |
+| `work_max_us` | µs | En uzun tur. Tur bütçesi 1/60 sn ≈ 16.667 µs; aşarsa sonraki turda `late_pulses` görünür | — |
+| `iter_gap_max_us` | µs | İki tur başlangıcı arasındaki en uzun **gerçek** süre (iş + uyku + süreç çalışmadığı süre). Normal 17–25 ms (test VM). **Gerçek duraklama göstergesi** | monoton saat, ek okuma yok |
+| `busy_pct` | % | `work_us` / gerçek pencere süresi | — |
+| `event_us` | µs | Zamanlanmış olaylar (`event_process`) | `main.cpp` `heartbeat` |
+| `hb_us` | µs | Heartbeat'in geri kalanı: oyuncu sayısı/kayıt, item güncelleme, `DBManager`/`AccountDB`/PvP işleme | `main.cpp` `heartbeat` |
+| `chr_us` | µs | `CHARACTER_MANAGER::Update`: oyuncu ve durum makinesi güncellemesi | `main.cpp` `idle` |
+| `io_us` | µs | `db_clientdesc->Update` (zaman kontrolü, 5 dk'da bir kanal durumu) + `io_loop` (soketler, paket işleme) | `main.cpp` `idle` |
+| `other_us` | µs | `work_us` − bölümler toplamı: `thecore_tick`, `get_dword_time`, sayaç sıfırlama, metrik satırının kendisi vb. Bölümler işin %100'ü değildir | — |
+| `events` | adet | İşlenen olay | `event_process` dönüşü |
+| `sent_bytes` | bayt | Oyunculara/peer'lara yazılan bayt | `desc.cpp` `current_bytes_written` (delta ile, kayma yok) |
+| `metrics_dropped` | adet | Kuyruk dolu olduğu için atılan satır (**süreç başından beri**) | spdlog `discard_counter` |
+| `metrics_write_errors` | adet | Dosyaya yazılamayan satır (**süreç başından beri**) | `metrics_daily_sink.h` |
+
+## Normal aralıklar
+**BASELINE_PENDING.** Production ve yük testi ölçümü yok; aralıklar acceptance/yük/soak ölçümlerinden sonra buraya
+yazılacak. O zamana kadar karşılaştırma aynı sunucunun kendi geçmişiyle yapılır.
+
+Kesin olanlar: `late_pulses > 0` = döngü en az bir kez tur bütçesini aştı; `work_max_us > 16667` = en az bir tur
+1/60 sn'den uzun sürdü (`PASSES_PER_SEC: 60` için).
+
+Test VM'de boşta görülenler (2026-10-05, 0 oyuncu, kanıt worklog'da): `busy_pct` 1–2, `work_max_us` 1–7 ms,
+`iter_gap_max_us` 17–25 ms. Açılıştan sonraki ilk 1–2 dakikada `late_pulses` 1–2 ve tek tük 20–40 ms'lik turlar normal
+(ısınma). Ara sıra **bütün süreçlerde aynı anda** `late_pulses=1` görülüyor: VM genelinde kısa duraklama.
+
+## Gecikmeyi okuma
+1. **Duraklama ne kadardı?** `iter_gap_max_us`. Yaşandığı pencerede görünür.
+2. **Kimin suçu?** Aynı satırda `work_max_us` ≈ `iter_gap_max_us` → döngünün kendi işi; bölüm alanlarına
+   (`event_us`, `chr_us`, `io_us`…) bak. `work_max_us` çok küçük → süreç **çalışmadı** (VM/host duraklaması, CPU
+   yetmedi, `kill -STOP`): aynı saatte diğer süreçlere bak; hepsinde varsa sunucu/host geneli.
+3. **Oyun bunu nasıl yaşadı?** `late_pulses`/`max_late_pulses`. Süreç uyku sırasında durduysa `heart_idle` gecikmeyi
+   uykudan **önce** hesapladığı için (`heart.cpp:36-67`) gecikme bir sonraki turda sayılır; araya pencere sınırı
+   girerse `late_pulses` bir sonraki satırda çıkar, `iter_gap_max_us` ise duraklamanın satırında kalır.
+   Örnek (`kill -STOP` 2 sn): `iter_gap_max_us=2018538 work_max_us=4811 late_pulses=120`.
+4. **`heart_idle` fazla sayar (upstream davranışı):** gecikmede geçen pulse'ın üstüne +1 döner ve zaman tabanını
+   "şimdi"ye kaydırır (`heart.cpp:49-55, 70`); her gecikmede oyun saati ~1 pulse öne geçer. Sık gecikmeli pencerede
+   `pulses` > 60 × saniye olur (ölçülen: `late_pulses=79` → 10 sn'de 653 pulse). Metrik bunu olduğu gibi raporlar;
+   düzeltilmedi (`libthecore`'u db de kullanıyor, ayrı iş).
+
+## Ölçüm maliyeti
+Tur başına 4 + 2×(işlenen pulse) `steady_clock::now()` okuması (bölümler zaman damgasını paylaşır) + pencere başına 1.
+Döngü saniyede en fazla 60 tur / 60 pulse çalıştığı için bu **sabit** bir maliyettir: oyuncu ya da mob sayısıyla
+artmaz (~360 okuma/sn/süreç).
+
+Test VM'de (VirtualBox, `kern.timecounter.hardware: ACPI-fast`; `TSC-low` kalitesi 0, "TSC calibration failed") bir
+okuma **~11,6 µs** (`tools/metrics/clock-cost.cpp`): her okuma bir sistem çağrısı + emüle edilen I/O portu.
+**A/B ölçümü** (2026-10-05, boşta, 5 game süreci, 300 sn, `procstat -r` user+sys):
+
+| | süreç başına CPU (bir çekirdeğin %'si) | 5 süreç toplam |
+|---|---|---|
+| `METRICS_ENABLE: 1` | 1,40–1,64 (ort. 1,56) | 23,4 sn / 300 sn |
+| `METRICS_ENABLE: 0` | 0,77–1,06 (ort. 0,94) | 14,2 sn / 300 sn |
+
+Fark süreç başına **~0,6 puan** (bir çekirdeğin %0,6'sı), 5 süreçte 4 vCPU'luk VM'in ~%0,8'i. Tahmin (%0,4) bundan
+düşüktü. Oyunun kendi boştaki CPU'sunun da çoğu sistem zamanı (ör. core1: user 1,5 sn / sys 9,5 sn); oyun da her turda
+saati birkaç kez okuyor (`heart_idle`, `get_dword_time`), aynı sebep. TSC zaman kaynağı olan fiziksel sunucuda okuma
+sistem çağrısı gerektirmez, maliyetin yüzlerce kat düşük olması beklenir. **Production donanımında ölçülmedi:**
+`docs/production-checklist.md` → metrik maliyeti.
+
+## Arıza davranışı (gözlem sistemi gözleneni bozmaz)
+- Yazma ayrı bir spdlog havuzunda (kuyruk 64, 1 thread, `discard_new`): kuyruk doluysa satır atılır, oyun thread'i
+  beklemez. syslog/syserr'in global havuzu paylaşılmaz.
+- Dizin oluşturulamazsa / dosya açılamazsa / yazma ya da `fflush` başarısız olursa (disk dolu dahil) satır atılır,
+  `metrics_write_errors` artar, sonraki satırda yeniden denenir. Her satır yazılınca `fflush` edilir: satır stdio
+  tamponuna sığdığı için disk dolu hatası ancak orada görünür. Sink hiçbir istisnayı dışarı sızdırmaz.
+- Süreç `kill -9` ile ölürse yazılmamış son pencere (en fazla 10 sn) kaybolur; dosyada yarım satır kalmaz, yeniden
+  başlatınca yeni `pid` ile aynı günün dosyasına devam edilir.
+- Başlatma başarısız olursa metrikler kapalı kalır (`syserr`: `METRICS: initialization failed`), oyun devam eder.
+- Metrik thread'i bütün sinyalleri engeller: `SIGVTALRM` watchdog'u ve diğer işleyiciler eskisi gibi çalışır.
+- Kapanışta son kısmi pencere yazılır, kuyruk boşaltılır (`destroy()` → `thecore_destroy` öncesi).
+- Test: `tools/metrics/sink-test.cpp` (sink + havuz, oyun gerekmez; 8 senaryo: normal yazma, kuyruk doygunluğu,
+  dizin/dosya yolu hatası, saklama, gece yarısı, sinyaller, disk dolması).
