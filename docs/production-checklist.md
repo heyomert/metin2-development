@@ -68,7 +68,9 @@ Ayrıntı: `docs/roadmap.md` K-3, `docs/worklog/2026-10-05-admin-channel-config.
 - [ ] `conf/` dosyaları `640`, klasör `750`; kurulumdan sonra `server/perms.py` (`0o777`) yeniden çalıştırılmadı (A-12).
 - [ ] Log'larda şifre yok (değeri basmadan sayım):
       `P=$(grep '^ADMINPAGE_PASSWORD' <conf>/game.txt | sed 's/^[^:]*:[ ]*//' | tr -d '\r'); grep -rlF "$P" <channels>/ /var/log/m2dev.log | wc -l; unset P` → `0`
-- [ ] **Kod adımı yapıldı:** yönetim girişi şifresi log'a yazılmıyor (`input.cpp:238`, `config.cpp:198`) ve A-11 değerlendirildi.
+- [ ] Production'daki `game` binary'si port güvenliği ve log maskeleme düzeltmesini içeren kaynaktan derlenmiş
+      (`docs/worklog/2026-10-05-admin-channel-code.md`). Açılışta `syserr.log`'da "publicly known default" uyarısı **yok**
+      (uyarı varsa şifre varsayılan/yer tutucu değerde).
 
 ### ☐ K-2 — Şifre saklama yöntemi
 Bkz. `docs/roadmap.md` (Faz 1.2). Ayrıntılı doğrulama maddeleri ilgili iş yapılırken buraya eklenecek.

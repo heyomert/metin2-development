@@ -195,7 +195,11 @@ static void FN_log_adminpage()
 		++iter;
 	}
 
-	sys_log(1, "ADMIN_PAGE_PASSWORD = %s", g_stAdminPagePassword.c_str());
+	// Never log the password itself; only flag the publicly known values.
+	if (g_stAdminPagePassword == "SHOWMETHEMONEY" || g_stAdminPagePassword == "CHANGE_ME_BEFORE_PRODUCTION")
+		sys_err("ADMINPAGE_PASSWORD is a publicly known default; set a random value in game.txt");
+	else
+		sys_log(1, "ADMIN_PAGE_PASSWORD = <set>");
 }
 
 
