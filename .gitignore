@@ -1,3 +1,6 @@
 # Client runtime output
 /client/log/
 /client/pack/
+
+# Local editor state (Obsidian vault settings for docs/)
+/docs/.obsidian/
