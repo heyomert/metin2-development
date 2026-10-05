@@ -1,4 +1,18 @@
 ﻿#include "stdafx.h"
+#include "utils.h"
+
+#include <ma_hash.h>
+
+// MariaDB Connector/C hash API (vendor/mariadb-connector-c-3.4.5/include/ma_crypt.h). Declared here with an
+// opaque context because ma_crypt.h needs the connector's crypto-backend macro; the signatures are the same
+// for every backend (libmariadb/secure/openssl_crypt.c, win_crypt.c, gnutls_crypt.c).
+extern "C"
+{
+	void* ma_hash_new(unsigned int algorithm);
+	void ma_hash_free(void* ctx);
+	void ma_hash_input(void* ctx, const unsigned char* buffer, size_t len);
+	void ma_hash_result(void* ctx, unsigned char* digest);
+}
 
 static int global_time_gap = 0;
 
@@ -247,3 +261,33 @@ bool WildCaseCmp(const char *w, const char *s)
 	return false;
 }
 
+static bool sha1_digest(const unsigned char* in, size_t len, unsigned char out[MA_SHA1_HASH_SIZE])
+{
+	void* ctx = ma_hash_new(MA_HASH_SHA1);
+	if (!ctx)
+		return false;
+
+	ma_hash_input(ctx, in, len);
+	ma_hash_result(ctx, out);
+	ma_hash_free(ctx);
+	return true;
+}
+
+bool mysql_native_password_hash(const char* pw, size_t len, std::string& out)
+{
+	unsigned char stage1[MA_SHA1_HASH_SIZE];
+	unsigned char stage2[MA_SHA1_HASH_SIZE];
+
+	if (!sha1_digest(reinterpret_cast<const unsigned char*>(pw), len, stage1) || !sha1_digest(stage1, sizeof(stage1), stage2))
+		return false;
+
+	static const char hex[] = "0123456789ABCDEF";
+
+	out.assign(1, '*');
+	for (unsigned char b : stage2)
+	{
+		out += hex[b >> 4];
+		out += hex[b & 0x0F];
+	}
+	return true;
+}

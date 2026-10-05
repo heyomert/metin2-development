@@ -7,6 +7,7 @@
 #include "protocol.h"
 #include "locale_service.h"
 #include "db.h"
+#include "utils.h"
 
 #include <unordered_map>
 
@@ -211,6 +212,26 @@ void CInputAuth::Login(LPDESC d, const char * c_pData)
 		return;
 	}
 
+	// Never authenticate with an empty password. The client blocks it, but the client is not trusted, and an
+	// account row created without a password has password = '' (schema default), which PASSWORD('') matched.
+	if (passwd[0] == '\0')
+	{
+		sys_log(0, "InputAuth::Login : EMPTY PASSWORD %s desc %p", login, get_pointer(d));
+		RecordLoginFailure(d->GetHostName());
+		LoginFailure(d, "WRONGPWD");
+		return;
+	}
+
+	// Hash in C++ (same value as MariaDB PASSWORD()) so the plain password never goes into SQL text and login
+	// does not depend on PASSWORD() (removed in MySQL 8.0) or the old_passwords setting.
+	std::string stPasswordHash;
+	if (!mysql_native_password_hash(passwd, strlen(passwd), stPasswordHash))
+	{
+		sys_err("InputAuth::Login : password hash failed for %s", login);
+		LoginFailure(d, "WRONGPWD");
+		return;
+	}
+
 	if (g_bNoMoreClient)
 	{
 		TPacketGCLoginFailure failurePacket;
@@ -265,7 +286,7 @@ void CInputAuth::Login(LPDESC d, const char * c_pData)
 	else
 	{
 		DBManager::instance().ReturnQuery(QID_AUTH_LOGIN, dwKey, p, 
-				"SELECT PASSWORD('%s'),password,social_id,id,status,availDt - NOW() > 0,"
+				"SELECT '%s',password,social_id,id,status,availDt - NOW() > 0,"
 				"UNIX_TIMESTAMP(silver_expire),"
 				"UNIX_TIMESTAMP(gold_expire),"
 				"UNIX_TIMESTAMP(safebox_expire),"
@@ -275,7 +296,7 @@ void CInputAuth::Login(LPDESC d, const char * c_pData)
 				"UNIX_TIMESTAMP(money_drop_rate_expire),"
 				"UNIX_TIMESTAMP(create_time)"
 				" FROM account WHERE login='%s'",
-				szPasswd, szLogin);
+				stPasswordHash.c_str(), szLogin);
 	}
 }
 
