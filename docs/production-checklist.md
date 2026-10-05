@@ -72,8 +72,17 @@ Ayrıntı: `docs/roadmap.md` K-3, `docs/worklog/2026-10-05-admin-channel-config.
       (`docs/worklog/2026-10-05-admin-channel-code.md`). Açılışta `syserr.log`'da "publicly known default" uyarısı **yok**
       (uyarı varsa şifre varsayılan/yer tutucu değerde).
 
-### ☐ K-2 — Şifre saklama yöntemi
-Bkz. `docs/roadmap.md` (Faz 1.2). Ayrıntılı doğrulama maddeleri ilgili iş yapılırken buraya eklenecek.
+### ☐ K-2 — Hesap şifreleri: veritabanı kısıtları
+
+**Neden:** Giriş, MariaDB'nin `PASSWORD()` fonksiyonuna bağlı (`docs/roadmap.md` K-2). Fonksiyon MySQL 8.0'da yok; MariaDB'de
+`old_passwords=1` olursa farklı biçim üretir. İki durumda da **kimse giriş yapamaz**. Şifre SQL metninde açık gittiği için genel
+sorgu log'u açıksa şifreler oraya yazılır. (B seçeneği yapılınca ilk iki madde zorunlu olmaktan çıkar; üçüncüsü yine iyi uygulama.)
+
+- [ ] Veritabanı sunucusu **MariaDB** (upstream şartı 11.8, `server-src/README.md:873`); MySQL 8 değil.
+- [ ] `old_passwords = 0` ve `PASSWORD()` 41 karakter üretiyor:
+      `mysql -e "SELECT @@old_passwords, LENGTH(PASSWORD('x'))"` → `0 | 41`
+- [ ] Genel sorgu log'u kapalı (`@@general_log = 0`); geçici açılırsa iş bitince kapatılıp log dosyası silinir.
+- [ ] Gerçek bir hesapla giriş testi (doğru şifre girer, yanlış şifre `WRONGPWD`).
 
 ## Yapılandırma temizliği (Faz 1.8)
 
