@@ -146,11 +146,12 @@ void CBlockTexture::InvalidateRect(const RECT & c_rsrcRect)
 	DWORD * pdwDst = (DWORD *)lockedRect.pBits;
 	DWORD dwDstWidth = lockedRect.Pitch>>2;
 	DWORD dwSrcWidth = m_pDIB->GetWidth();
+	// GDI writes color without alpha: any touched pixel becomes fully opaque, the rest transparent
 	for (int y = 0; y < iclipHeight; ++y)
 	{
 		for (int x = 0; x < iclipWidth; ++x)
 		{
-			pdwDst[x] = pdwSrc[x];
+			pdwDst[x] = pdwSrc[x] ? (pdwSrc[x] | 0xff000000) : 0;
 		}
 		pdwDst += dwDstWidth;
 		pdwSrc += dwSrcWidth;
