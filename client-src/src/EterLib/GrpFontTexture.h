@@ -2,9 +2,7 @@
 
 #include "GrpTexture.h"
 #include "GrpImageTexture.h"
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
+#include "GrpDIB.h"
 
 #include <vector>
 #include <map>
@@ -24,7 +22,7 @@ class CGraphicFontTexture : public CGraphicTexture
 			float right;
 			float bottom;
 			float advance;
-			float bearingX;
+			float bearingX;	// cell x offset from the pen position (negative when the glyph overhangs to the left)
 		} TCharacterInfomation;
 
 		typedef std::vector<TCharacterInfomation*> TPCharacterInfomationVector;
@@ -47,8 +45,6 @@ class CGraphicFontTexture : public CGraphicTexture
 		TCharacterInfomation* GetCharacterInfomation(wchar_t keyValue);
 		TCharacterInfomation* UpdateCharacterInfomation(TCharacterKey keyValue);
 
-		float GetKerning(wchar_t prev, wchar_t cur);
-
 		bool IsEmpty() const;
 
 	protected:
@@ -61,12 +57,11 @@ class CGraphicFontTexture : public CGraphicTexture
 		typedef std::map<TCharacterKey, TCharacterInfomation> TCharacterInfomationMap;
 
 	protected:
-		FT_Face m_ftFace;
+		// CPU-side atlas page that GDI rasterizes glyphs into
+		CGraphicDib m_dib;
 
-		// CPU-side atlas buffer (replaces CGraphicDib)
-		DWORD* m_pAtlasBuffer;
-		int m_atlasWidth;
-		int m_atlasHeight;
+		HFONT m_hFont;
+		HGDIOBJ m_hFontOld;
 
 		TGraphicImageTexturePointerVector m_pFontTextureVector;
 
@@ -79,9 +74,4 @@ class CGraphicFontTexture : public CGraphicTexture
 
 		LONG m_fontSize;
 		bool m_bItalic;
-
-		// FreeType metrics cached per-font
-		int m_ascender;
-		int m_lineHeight;
-		bool m_hasKerning;
 };

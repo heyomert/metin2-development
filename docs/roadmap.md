@@ -125,3 +125,5 @@ Kanıt durumu: **Kanıtlı** = koddan/ortamdan doğrulandı; **Kısmen**; **Doğ
 | Upstream `pack.py --all` paralel çalışınca sessizce başarısız | Şimdilik repo dışı script; upstream'e bildirilebilir ya da `pack.py` düzeltilebilir |
 | `start.py` konsola bağlı çocuk süreçler bırakıyor | VM'de `daemon(8)` ile aşıldı; production kurulumunda aynı servis dosyası gerekecek |
 | VM'e özel servis ve MariaDB ayarları repoda değil | Production kurulumunda repoya taşınmalı |
+| `client/config.exe` kaynaksız ve bozuk | Ayarları `metin2.cfg`'ye (client kökü) yazıyor, client `config/metin2.cfg` okuyor (`client-src/src/UserInterface/PythonSystem.cpp:401`; upstream `729a6624` taşıdı, exe güncellenmedi). Ses değerlerini de yanlış biçimde yazıyor. Karar: kaynaktan yeniden yazılacak (`client-src/src/Config`) |
+| Client DPI-unaware | `GetProcessDpiAwareness` = 0; ekran ölçeği %125+ olan oyuncularda Windows pencereyi büyütüp bulanıklaştırır (Anka2'de de aynı). Etki analizi gerekli |

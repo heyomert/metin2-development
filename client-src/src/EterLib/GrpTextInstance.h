@@ -95,7 +95,7 @@ class CGraphicTextInstance
 
 	protected:
 		void __Initialize();
-		int  __DrawCharacter(CGraphicFontTexture * pFontTexture, wchar_t text, DWORD dwColor, wchar_t prevChar = 0);
+		int  __DrawCharacter(CGraphicFontTexture * pFontTexture, wchar_t text, DWORD dwColor);
 		void __GetTextPos(DWORD index, float* x, float* y);
 
 	protected:
@@ -145,7 +145,6 @@ class CGraphicTextInstance
 
 		CGraphicText::TRef m_roText;
 		CGraphicFontTexture::TPCharacterInfomationVector m_pCharInfoVector;
-		std::vector<float> m_kernVector;
 		std::vector<DWORD> m_dwColorInfoVector;
 		std::vector<SHyperlink> m_hyperlinkVector;
 		std::vector<int> m_logicalToVisualPos; // Maps logical cursor pos (UTF-16 with tags) to visual pos (rendered chars)
