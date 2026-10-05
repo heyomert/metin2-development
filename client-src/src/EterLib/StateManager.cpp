@@ -2,6 +2,8 @@
 #include "StateManager.h"
 #include "GrpLightManager.h"
 
+#include <algorithm>
+
 //#define StateManager_Assert(a) if (!(a)) puts("assert"#a)
 #define StateManager_Assert(a) assert(a)
 
@@ -64,8 +66,9 @@ void CStateManager::EndScene()
 CStateManager::CStateManager(LPDIRECT3DDEVICE9EX lpDevice) : m_lpD3DDev(NULL)
 {
 	m_bScene = false;
-	m_dwBestMinFilter = D3DTEXF_ANISOTROPIC;
-	m_dwBestMagFilter = D3DTEXF_ANISOTROPIC;
+	m_dwBestMinFilter = D3DTEXF_LINEAR;
+	m_dwBestMagFilter = D3DTEXF_LINEAR;
+	m_dwMaxAnisotropy = 1;
 
 	for (int i = 0; i < STATEMANAGER_MAX_RENDERSTATES; i++)
 		lpDevice->GetRenderState((D3DRENDERSTATETYPE)i, &gs_DefaultRenderStates[i]);
@@ -99,6 +102,23 @@ void CStateManager::SetDevice(LPDIRECT3DDEVICE9EX lpDevice)
 	}
 
 	m_lpD3DDev = lpDevice;
+
+	// Pick the best filters the device supports and the anisotropy level (the original client used at most 4x).
+	// The DX9 port dropped this, leaving D3DSAMP_MAXANISOTROPY at its default of 1, so "anisotropic" filtering
+	// was plain linear and ground textures blurred at oblique angles.
+	D3DCAPS9 d3dCaps;
+	if (SUCCEEDED(m_lpD3DDev->GetDeviceCaps(&d3dCaps)))
+	{
+		m_dwBestMagFilter = (d3dCaps.TextureFilterCaps & D3DPTFILTERCAPS_MAGFANISOTROPIC) ? D3DTEXF_ANISOTROPIC : D3DTEXF_LINEAR;
+		m_dwBestMinFilter = (d3dCaps.TextureFilterCaps & D3DPTFILTERCAPS_MINFANISOTROPIC) ? D3DTEXF_ANISOTROPIC : D3DTEXF_LINEAR;
+		m_dwMaxAnisotropy = std::clamp<DWORD>(d3dCaps.MaxAnisotropy, 1, 4);
+	}
+	else
+	{
+		m_dwBestMagFilter = D3DTEXF_LINEAR;
+		m_dwBestMinFilter = D3DTEXF_LINEAR;
+		m_dwMaxAnisotropy = 1;
+	}
 
 	SetDefaultState();
 }
@@ -361,6 +381,10 @@ void CStateManager::SetDefaultState()
 	SetSamplerState(7, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
 	SetSamplerState(7, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
 	SetSamplerState(7, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
+
+	// Only takes effect where a stage uses D3DTEXF_ANISOTROPIC; set here so it is restored after every device Reset
+	for (DWORD i = 0; i < STATEMANAGER_MAX_STAGES; ++i)
+		SetSamplerState(i, D3DSAMP_MAXANISOTROPY, m_dwMaxAnisotropy);
 
 	SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP);
 	SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP);

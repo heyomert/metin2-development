@@ -21,5 +21,6 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-05 | [Hesap şifreleri (K-2): durum doğrulandı, A ve B uygulandı](2026-10-05-k2-password-review.md) | karar / düzeltme | server / db | Aktif | — |
 | 2026-10-05 | [Yazı çizimi: FreeType LCD yerine orijinal GDI + 1-bit eşik (Anka2 görünümü)](2026-10-05-font-gdi-render.md) | düzeltme / karar | client-src | Aktif | #9 |
 | 2026-10-05 | [config.exe kaynaktan yeniden yazıldı; tam ekranda frekans seçimi MSAA'yı kapatıyordu](2026-10-05-config-tool.md) | düzeltme / karar | client-src / client | Aktif | #10 |
+| 2026-10-05 | [Zemin dokuları bulanıktı: DX9 geçişinde anizotropi ayarı kaybolmuş](2026-10-05-anisotropic-filtering.md) | düzeltme | client-src | Aktif | — |
 
 <!-- Eski yıllar: README-<yıl>.md -->

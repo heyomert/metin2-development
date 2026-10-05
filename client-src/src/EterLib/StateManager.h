@@ -177,6 +177,12 @@ public:
 			for (y = 0; y < STATEMANAGER_MAX_TEXTURESTATES; y++)
 				m_TextureStates[i][y] = 0x7FFFFFFF;
 
+		// Sampler states got their own cache in the DX9 port; without this it starts uninitialized
+		// and a value that happens to match would never reach the device.
+		for (i = 0; i < STATEMANAGER_MAX_STAGES; i++)
+			for (y = 0; y < STATEMANAGER_MAX_TEXTURESTATES; y++)
+				m_SamplerStates[i][y] = 0x7FFFFFFF;
+
 		for (i = 0; i < STATEMANAGER_MAX_STREAMS; i++)
 			m_StreamData[i] = CStreamData();
 
@@ -267,6 +273,8 @@ public:
 	void	SetTextureStageState(DWORD dwStage, D3DTEXTURESTAGESTATETYPE Type, DWORD dwValue);
 	void	GetTextureStageState(DWORD dwStage, D3DTEXTURESTAGESTATETYPE Type, DWORD* pdwValue);
 	void	SetBestFiltering(DWORD dwStage); // if possible set anisotropy filtering, or use trilinear
+	DWORD	GetBestMinFilter() const { return m_dwBestMinFilter; }
+	DWORD	GetBestMagFilter() const { return m_dwBestMagFilter; }
 
 	// Sampler states
 	void	SaveSamplerState(DWORD dwStage, D3DSAMPLERSTATETYPE Type, DWORD dwValue);
@@ -356,6 +364,7 @@ private:
 	bool				m_bScene;
 	DWORD				m_dwBestMinFilter;
 	DWORD				m_dwBestMagFilter;
+	DWORD				m_dwMaxAnisotropy;
 	LPDIRECT3DDEVICE9EX	m_lpD3DDev;
 
 	std::vector<DWORD>						m_RenderStateStack[STATEMANAGER_MAX_RENDERSTATES];
