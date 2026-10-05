@@ -94,6 +94,24 @@ bu kodu içerdiğini doğrular.
 - [ ] Sunucu açılışta kendiliğinden başlıyor (`service m2dev` ya da eşdeğeri) ve `start.py` konsola bağlı süreç bırakmıyor (`docs/worklog/2026-10-04-vm-autostart-sighup.md`)
 - [ ] Client `serverinfo.py` üretim sunucusunu gösteriyor; "02. Test" kaydı kaldırıldı ya da gerçek bir test sunucusuna yönlendirildi
 - [ ] Client exe `client-src`'den derlenmiş, hazır upstream exe değil
+- [ ] MariaDB'de anonim kullanıcı yok: `SELECT user, host FROM mysql.user WHERE user = ''` → boş (test VM'de `''@localhost`,
+      `''@<hostname>` var: sadece `USAGE`, ağ kapalı; varsayılan kurulumdan kalma)
+
+## Veritabanı yedeği (Faz 1.6)
+
+Ayrıntı: `docs/backup.md`. Test VM'de hepsi geçti (`docs/worklog/2026-10-05-db-backup.md`); production'da yeniden kanıtlanır.
+
+- [ ] Saatlik yedek cron'da ve `status-backup-hot` `result=ok`; `lock_ms` ölçülüp kaydedildi (VM: 380–844 ms). Oyuncu varken
+      bir yedek sırasında metriklerde (`docs/monitoring.md`) `late_pulses` artışı yok
+- [ ] Yedekler sunucu **dışında** (ayrı yedek makinesi çekiyor; sunucu yedekleri silemiyor) ve şifreli; sunucuda sadece açık anahtar
+- [ ] Özel anahtar en az iki ayrı yerde saklanıyor (kaybolursa bütün yedekler açılamaz)
+- [ ] Günlük geri yükleme testi yedek makinesinde otomatik çalışıyor ve `status-daily` `restore_test=ok`
+- [ ] Felaket geri yüklemesi (`docs/backup.md` → Geri yükleme) production'a benzer ortamda tatbik edildi: oyuna girilip karakter,
+      envanter, depo ve yang karşılaştırıldı
+- [ ] Binary/DB değişikliği prosedüründe `service m2dev stop` → `m2dev-backup consistent` adımı uygulanıyor
+- [ ] **Yük testi (roadmap 2.2) sırasında** saatlik yedek de çalıştı: yedek anlarında metriklerde `late_pulses`/`iter_gap_max_us`
+      artışı yok, syserr'de `[SLOW-GAME]` / `[SLOW-DB]` yok, `lock_ms` production veri büyüklüğünde ölçüldü
+- [ ] Yedek root yerine ayrı bir MariaDB kullanıcısıyla (`MARIADB_EXTRA_FILE`); gereken yetkiler test edilip `docs/backup.md`'ye yazıldı
 
 ## Gözlemlenebilirlik (Faz 1.5)
 

@@ -29,6 +29,7 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
    - `docs/roadmap.md` — fazlar, öncelikler, açık konular (kritik güvenlik bulguları dahil), teknik borç
    - `docs/production-checklist.md` — sunucu açılmadan önce geçilmesi gereken kapılar (P2P firewall dahil)
    - `docs/monitoring.md` — sunucu sağlık kaydı (lag, yük, oyuncu sayısı): alanlar ve okuma; "lag var mıydı" sorusuna önce buradan bak
+   - `docs/backup.md` — DB yedeği, geri yükleme testi, felakette geri yükleme; veritabanına dokunmadan önce `m2dev-backup consistent`
 3. Bir şey değiştirmeden önce gerçek dosyalarda doğrula. Dokümanlar yönlendirme ve hafızadır, kanıt değildir.
 
 ## Kurallar
