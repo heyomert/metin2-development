@@ -18,6 +18,7 @@ extern char db_addr[ADDRESS_MAX_LEN + 1];
 extern WORD db_port;
 
 extern int passes_per_sec;
+extern bool g_bMetricsEnable;
 extern int save_event_second_cycle;
 extern int ping_event_second_cycle;
 extern int test_server;

@@ -21,6 +21,7 @@
 #include "party.h"
 #include "questmanager.h"
 #include "profiler.h"
+#include "server_metrics.h"
 #include "lzo_manager.h"
 #include "messenger_manager.h"
 #include "db.h"
@@ -97,17 +98,6 @@ int		idle();
 void	destroy();
 
 void 	test();
-
-enum EProfile
-{
-	PROF_EVENT,
-	PROF_CHR_UPDATE,
-	PROF_IO,
-	PROF_HEARTBEAT,
-	PROF_MAX_NUM
-};
-
-static DWORD s_dwProfiler[PROF_MAX_NUM];
 
 int g_shutdown_disconnect_pulse;
 int g_shutdown_disconnect_force_pulse;
@@ -199,13 +189,14 @@ unsigned int save_idx = 0;
 
 void heartbeat(LPHEART ht, int pulse) 
 {
-	DWORD t;
+	CServerMetrics& rkMetrics = CServerMetrics::instance();
+	const bool bMetrics = rkMetrics.IsEnabled();
 
-	t = get_dword_time();
-	num_events_called += event_process(pulse);
-	s_dwProfiler[PROF_EVENT] += (get_dword_time() - t);
+	const int iEvents = event_process(pulse);
+	num_events_called += iEvents;
 
-	t = get_dword_time();
+	if (bMetrics)
+		rkMetrics.MarkEvents(iEvents);
 
 	// 1초마다
 	if (!(pulse % ht->passes_per_sec))
@@ -247,8 +238,6 @@ void heartbeat(LPHEART ht, int pulse)
 		DESC_MANAGER::instance().UpdateLocalUserCount();
 	}
 
-	s_dwProfiler[PROF_HEARTBEAT] += (get_dword_time() - t);
-
 	DBManager::instance().Process();
 	AccountDB::instance().Process();
 	CPVPManager::instance().Process();
@@ -271,6 +260,9 @@ void heartbeat(LPHEART ht, int pulse)
 			thecore_shutdown();
 		}
 	}
+
+	if (bMetrics)
+		rkMetrics.MarkHeartbeat();
 }
 
 static void CleanUpForEarlyExit() {
@@ -336,6 +328,7 @@ int main(int argc, char **argv)
 	CTableBySkill SkillPowerByLevel;
 	CPolymorphUtils polymorph_utils;
 	CProfiler		profiler;
+	CServerMetrics	server_metrics;
 	CBattleArena	ba;
 	SpamManager		spam_mgr;
 	CThreeWayWar	threeway_war;
@@ -516,6 +509,8 @@ int start(int argc, char **argv)
 	config_init(st_localeServiceName);
 	// END_OF_LOCALE_SERVICE
 
+	CServerMetrics::instance().Initialize();
+
 #ifdef OS_WINDOWS
 	// In Windows dev mode, "verbose" option is [on] by default.
 	bVerbose = true;
@@ -619,6 +614,9 @@ void destroy()
 	sys_log(0, "<shutdown> CTextFileLoader::DestroySystem()...");
 	CTextFileLoader::DestroySystem();
 
+	sys_log(0, "<shutdown> CServerMetrics::Shutdown()...");
+	CServerMetrics::instance().Shutdown();
+
 	sys_log(0, "<shutdown> thecore_destroy()...");
 	thecore_destroy();
 }
@@ -639,6 +637,15 @@ int idle()
 
 	assert(passed_pulses > 0);
 
+	// Server metrics use their own monotonic clock; t below keeps its original value and meaning for
+	// db_clientdesc->Update (channel status timing, desc_client.cpp).
+	CServerMetrics& rkMetrics = CServerMetrics::instance();
+	const bool bMetrics = rkMetrics.IsEnabled();
+	const int iPassedPulses = passed_pulses;
+
+	if (bMetrics)
+		rkMetrics.BeginIteration(iPassedPulses);
+
 	DWORD t;
 
 	while (passed_pulses--) {
@@ -649,19 +656,30 @@ int idle()
 	}
 
 	t = get_dword_time();
-	CHARACTER_MANAGER::instance().Update(thecore_heart->pulse);
-	db_clientdesc->Update(t);
-	s_dwProfiler[PROF_CHR_UPDATE] += (get_dword_time() - t);
 
-	t = get_dword_time();
+	if (bMetrics)
+		rkMetrics.Mark();
+
+	CHARACTER_MANAGER::instance().Update(thecore_heart->pulse);
+
+	if (bMetrics)
+		rkMetrics.MarkCharacterUpdate();
+
+	db_clientdesc->Update(t);
+
 	if (!io_loop(main_fdw)) return 0;
-	s_dwProfiler[PROF_IO] += (get_dword_time() - t);
+
+	if (bMetrics)
+		rkMetrics.MarkIO();
 
 	gettimeofday(&now, (struct timezone *) 0);
 	++process_time_count;
 
 	if (now.tv_sec - pta.tv_sec > 0)
 	{
+		if (bMetrics)
+			rkMetrics.OnBytesWrittenReset(current_bytes_written);
+
 		num_events_called = 0;
 		current_bytes_written = 0;
 
@@ -669,8 +687,10 @@ int idle()
 		gettimeofday(&pta, (struct timezone *) 0);
 
 		memset(&thecore_profiler[0], 0, sizeof(thecore_profiler));
-		memset(&s_dwProfiler[0], 0, sizeof(s_dwProfiler));
 	}
+
+	if (bMetrics)
+		rkMetrics.EndIteration(current_bytes_written);
 
 #ifdef OS_WINDOWS
 	if (_kbhit()) {
