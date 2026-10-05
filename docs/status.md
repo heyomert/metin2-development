@@ -1,10 +1,10 @@
 # Durum
 
-Kapsadığı commit: `fix/anisotropic-filtering` (2026-10-05, PR açık; taban e47ffde2 = PR #10 merge). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline e47ffde2..HEAD -- . ':!docs/status.md'` anizotropi PR'ı dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: PR #11 merge'ü (2026-10-05; taban e47ffde2 = PR #10 merge). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline e47ffde2..HEAD -- . ':!docs/status.md'` PR #11 dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-Yazı çizimi Anka2/orijinal görünümde (PR #9 merge). `config.exe` kaynaktan yeniden yazıldı, tam ekranda frekans/MSAA hatası düzeltildi (PR #10 merge). Zemin netliği: DX9 geçişinde kaybolan 4x anizotropi geri geldi (PR açık). Faz 1 güvenlik kalemleri test VM'de tamam (PR #5–#8). Production ☐.
+Yazı çizimi Anka2/orijinal görünümde (PR #9 merge). `config.exe` kaynaktan yeniden yazıldı, tam ekranda frekans/MSAA hatası düzeltildi (PR #10 merge). Zemin netliği: DX9 geçişinde kaybolan 4x anizotropi geri geldi (PR #11 merge). Faz 1 güvenlik kalemleri test VM'de tamam (PR #5–#8). Production ☐.
 
 ## Sıradaki
 1. Monitoring ve log saklama kararı (roadmap 1.4–1.5)

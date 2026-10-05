@@ -4,7 +4,7 @@
 - **Tür:** düzeltme
 - **Alan:** client-src
 - **Durum:** Aktif
-- **PR / commit:** <PR linki>
+- **PR / commit:** [#11](https://github.com/heyomert/metin2-development/pull/11)
 
 ## Problem / hedef
 Aynı çözünürlükte (1366×768 tam ekran) başka bir files (AnadoluMt2) belirgin şekilde daha net görünüyordu;
@@ -34,7 +34,7 @@ bizde zemin dokuları birkaç metre ileriden itibaren bulanıklaşıyordu.
   (`sampler-reset.cpp`), yani "alt-tab sonrası POINT'e düşüyor" varsayımı burada geçerli değil.
 
 ## Çözüm
-PR'da. `EterLib/StateManager`: `SetDevice` cihaz desteğine göre en iyi min/mag filtreyi seçer ve anizotropiyi
+PR #11. `EterLib/StateManager`: `SetDevice` cihaz desteğine göre en iyi min/mag filtreyi seçer ve anizotropiyi
 `clamp(MaxAnisotropy, 1, 4)` olarak hesaplar; `SetDefaultState` 8 aşamaya `D3DSAMP_MAXANISOTROPY` yazar;
 `ResetState` sampler önbelleğini de sıfırlar. `CPythonGraphic::SetGameRenderState` ve su çizimi destek kontrolü
 olmadan anizotropik istemek yerine aynı seçimi kullanır (`SetBestFiltering`, `GetBestMin/MagFilter`).
