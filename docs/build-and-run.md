@@ -15,7 +15,8 @@ cd client-src
 ```
 - Bu makinede `-- /m` (paralel) bellek yetmezliğiyle düşüyor (C1060 "derleyicinin yığın alanı kalmadı", "disk belleği dosyası
   çok küçük"); kodda hata yokken. `-- /m:1` ile derle (2026-10-05'te bu şekilde 0 hatayla geçti).
-- Çıktılar: `client-src/build/bin/Release/Metin2_Release.exe`, `PackMaker.exe`, `DumpProto.exe`.
+- Çıktılar: `client-src/build/bin/Release/Metin2_Release.exe`, `config.exe`, `PackMaker.exe`, `DumpProto.exe`.
+- `config.exe` → `client/config.exe` olarak kopyala (ayar programı, kaynağı `client-src/src/Config`; `config/metin2.cfg`'yi yazar).
 - `Metin2_Release.exe` → `client/Metin2.exe` olarak kopyala (2026-10-04'te bu şekilde derlenip test edildi, ~5 dk).
 - **Kural:** dağıtılan exe her zaman `client-src`'den derlenir. Upstream'in hazır exe'si kaynaktan eski kaldı
   (`docs/worklog/2026-10-04-login-input-secret-mode.md`).

@@ -1,0 +1,19 @@
+#pragma once
+
+#define IDI_CONFIG				101
+#define IDD_CONFIG				102
+
+#define IDC_RESOLUTION			1001
+#define IDC_FREQUENCY			1002
+#define IDC_MUSIC_VOLUME		1004
+#define IDC_MUSIC_VOLUME_TEXT	1005
+#define IDC_VOICE_VOLUME		1006
+#define IDC_VOICE_VOLUME_TEXT	1007
+#define IDC_SOFTWARE_CURSOR		1008
+#define IDC_WINDOWED			1009
+#define IDC_FULLSCREEN			1010
+#define IDC_GAME_IME			1011
+#define IDC_DEFAULT_IME			1012
+#define IDC_FOG					1013
+#define IDC_TILING				1014
+#define IDC_SHADOW				1015

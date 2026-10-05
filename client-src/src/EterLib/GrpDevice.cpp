@@ -393,7 +393,8 @@ RETRY:
 	else
 	{
 		ms_d3dPresentParameter.PresentationInterval			= D3DPRESENT_INTERVAL_ONE;
-		ms_d3dPresentParameter.FullScreen_RefreshRateInHz	= D3DPRESENT_RATE_DEFAULT;
+		// Must equal displayModeEx.RefreshRate below: CreateDeviceEx rejects a mismatch with D3DERR_INVALIDCALL
+		ms_d3dPresentParameter.FullScreen_RefreshRateInHz	= iReflashRate;
 	}
 
 	ms_d3dPresentParameter.EnableAutoDepthStencil			= TRUE;
