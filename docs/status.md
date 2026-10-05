@@ -12,7 +12,6 @@ DB yedeği (roadmap 1.6) test VM'de çalışıyor: saatlik şifreli döküm (cro
 3. Monitoring 2. adım (RAM/CPU, yedek durumu uyarısı, grafik → VM'e paket, ayrı onay); core dump + çökme uyarısı (1.7)
 
 ## Senden bekleyen kararlar
-- **Özel yedek anahtarının ikinci kopyası** (`C:\Users\mertw\.m2dev\secrets\m2dev-backup.agekey`): sende, ayrı bir yerde
 - `heart_idle` gecikmede fazladan pulse sayıyor (teknik borç): yük testinden önce etki analizi yapılsın mı
 - Dakika hassasiyetinde geri dönüş (binlog + PITR) gerekli mi
 - Görev listesinde uzun adların taşması (`client/assets/root/interfacemodule.py:1375`); `vendor/freetype-2.13.3` silinsin mi; client DPI
