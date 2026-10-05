@@ -1,10 +1,10 @@
 # Durum
 
-Kapsadığı commit: `feat/db-backup` dalı (2026-10-06; taban 82e3ef8c; merge sonrası PR numarası eklenecek). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline 82e3ef8c..HEAD -- . ':!docs/status.md'` bu daldan başka bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: PR #13 merge'ü (2026-10-06; taban 82e3ef8c). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline 82e3ef8c..HEAD -- . ':!docs/status.md'` PR #13 dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-DB yedeği (roadmap 1.6) test VM'de çalışıyor: saatlik şifreli döküm (cron), günlük çekme + geri yükleme testi (Windows Görev Zamanlayıcı `m2dev-backup-daily`), tatbikat oyunda doğrulandı → `docs/backup.md`, `docs/worklog/2026-10-05-db-backup.md`. Sağlık kaydı (1.5 adım 1, PR #12) çalışıyor → `docs/monitoring.md`. Production ☐.
+DB yedeği (roadmap 1.6) test VM'de çalışıyor: saatlik şifreli döküm (cron), günlük çekme + geri yükleme testi (Windows Görev Zamanlayıcı `m2dev-backup-daily`), tatbikat oyunda doğrulandı (PR #13 merge) → `docs/backup.md`, `docs/worklog/2026-10-05-db-backup.md`. Sağlık kaydı (1.5 adım 1, PR #12) çalışıyor → `docs/monitoring.md`. Production ☐.
 
 ## Sıradaki
 1. **Aria → InnoDB etki analizi** (yüksek risk: analiz → onay → kod). Gerekçe ölçüldü: yedek kilidi 3,5 milyon item'da 8 sn, Aria tablo kilidi, çöküşte Aria kaydı. Production'dan önce şart
