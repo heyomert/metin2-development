@@ -4,7 +4,7 @@
 - **Tür:** düzeltme / karar
 - **Alan:** client-src / client
 - **Durum:** Aktif
-- **PR / commit:** <PR linki>
+- **PR / commit:** [#10](https://github.com/heyomert/metin2-development/pull/10)
 
 ## Problem / hedef
 `config.exe`'de seçilen çözünürlük ve tam ekran oyunda hiç uygulanmıyordu. Hedef: ayarların `config.exe`
@@ -42,7 +42,7 @@
   `GAMMA` satırı dosyada korunuyor.
 
 ## Çözüm
-PR'da. Özet:
+PR #10. Özet:
 - `client-src/src/Config`: Win32 diyalog (MFC yok), çıktı `config.exe`. `config/metin2.cfg`'yi oyunun
   biçimiyle yazar; yönetmediği satırları korur; oyun ilk boş satırda okumayı bıraktığı için boş satırları atar;
   önce geçici dosyaya yazıp sonra değiştirir. Çözünürlük listesi `CPythonSystem::GetDisplaySettings` ile aynı

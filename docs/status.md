@@ -1,17 +1,16 @@
 # Durum
 
-Kapsadığı commit: `feat/config-tool` branch'i (2026-10-05, PR açık; taban cc2b953e = PR #9 merge). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline cc2b953e..HEAD -- . ':!docs/status.md'` sadece config PR'ını göstermiyorsa eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: PR #10 merge'ü (2026-10-05; taban cc2b953e = PR #9 merge). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline cc2b953e..HEAD -- . ':!docs/status.md'` PR #10 dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-Yazı çizimi Anka2/orijinal görünümde (PR #9 merge). `config.exe` kaynaktan yeniden yazıldı, tam ekranda frekans/MSAA hatası düzeltildi (PR açık). Faz 1 güvenlik kalemleri test VM'de tamam (PR #5–#8). Production ☐.
+Yazı çizimi Anka2/orijinal görünümde (PR #9 merge). `config.exe` kaynaktan yeniden yazıldı, tam ekranda frekans/MSAA hatası düzeltildi (PR #10 merge). Faz 1 güvenlik kalemleri test VM'de tamam (PR #5–#8). Production ☐.
 
 ## Sıradaki
 1. Monitoring ve log saklama kararı (roadmap 1.4–1.5)
 2. DB yedeği + restore testi (1.6), core dump + çökme uyarısı (1.7)
 
 ## Senden bekleyen kararlar
-- Config PR: inceleme ve merge
 - Görev listesinde uzun adların yan sütuna taşması (`client/assets/root/interfacemodule.py:1375`, sabit 100 px): düzeltilsin mi
 - `vendor/freetype-2.13.3`: build'den çıktı, silinsin mi (öneri: şimdilik kalsın, `tools/font-compare` kullanıyor)
 - Client DPI-unaware (%125+ ölçekte bulanık): etki analizi yapılsın mı
