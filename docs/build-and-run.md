@@ -87,6 +87,8 @@ service m2dev start
   (`server-src/src/game/utils.cpp` → `mysql_native_password_hash`, saklanan `*SHA1(SHA1)` biçimiyle aynı). SQL'e şifre gitmiyor,
   `old_passwords` ayarı girişi etkilemiyor. Boş şifre sunucuda reddediliyor. Ayrıntı: `docs/worklog/2026-10-05-k2-password-review.md`.
 - Şemalar: `server/sql/*.sql`. Şema değişikliği = `server/sql` dosyası + mevcut DB için migration SQL (PR açıklamasında).
+- **Yedek:** saatlik sıcak yedek (cron), bakım öncesi `m2dev-backup consistent`, günlük çekme + geri yükleme testi. Kurulum,
+  felakette geri yükleme ve durum dosyaları: `docs/backup.md`. Veritabanına elle dokunmadan önce bakım yedeği al.
 
 ### Quest derleme
 - `server/share/locale/english/quest/make.py` sadece `locale_list`'teki quest'leri `qc` ile `object/`'e derler (`make.py:71`).
@@ -101,7 +103,8 @@ cmake --build /root/build-verify -j4
 - Çıktı: `<build>/bin/{game,db,qc}`. Derleme çalışan sunucuya **dokunmaz** (çıktı sadece `bin/`'e gider, `server-src/CMakeLists.txt:46`;
   kopyalama/install adımı yok).
 - Çalışan binary'ler: `/usr/local/m2dev-acceptance/server/share/bin/{game,db,qc}` — kanal klasörlerindeki `channelN_coreM` ve `db`
-  bunlara symlink. Devreye almak = yedek al → servisi durdur → kopyala → servisi başlat → test.
+  bunlara symlink. Devreye almak = eski binary'yi sakla → `service m2dev stop` → **`m2dev-backup consistent`** (kayıpsız DB
+  yedeği; servis çalışırken reddeder, `docs/backup.md`) → kopyala → servisi başlat → test.
 - VM kaynak ağacı `/usr/local/m2dev-acceptance/server-src`, repodaki `server-src` ile aynı (460 dosyanın içerik özeti eşleşti).
   Kod değiştirirken önce repodaki değişikliği VM'e taşı, sonra derle.
 - **İki derleme dizini var, farkı bil:**

@@ -1,0 +1,7 @@
+# m2dev database backup (docs/backup.md). Install as /usr/local/etc/cron.d/m2dev-backup (root:wheel 0644).
+# Hourly hot backup at minute 17 (away from the top of the hour). Results: /var/backups/m2dev/status-backup-hot
+# and /var/log/m2dev-backup.log; output is not mailed.
+SHELL=/bin/sh
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
+#minute	hour	mday	month	wday	who	command
+17	*	*	*	*	root	/usr/local/sbin/m2dev-backup hot > /dev/null 2>&1

@@ -1,0 +1,55 @@
+# m2dev database backup settings (docs/backup.md). Install as /usr/local/etc/m2dev-backup.conf (root:wheel 0640).
+# Sourced by m2dev-backup.sh and m2dev-restore-test.sh as /bin/sh; keep it to plain VAR=value lines.
+
+# Optional MariaDB client options file (no spaces in the path), e.g. a dedicated backup user instead of root:
+#   [client]
+#   user=m2backup
+#   password=...
+# Empty: root over the default socket (test VM). See docs/backup.md for the privileges such a user needs.
+MARIADB_EXTRA_FILE=
+
+# Where finished backups are kept until the backup host pulls them, and where the status lines are written
+BACKUP_DIR=/var/backups/m2dev
+
+# Newest backups kept on this server (48 = two days of hourly backups, so a backup host that misses pulls for a
+# day loses nothing); older ones are removed after a successful backup. Off-site copies are
+# kept by the backup host (deploy/backup-host/m2dev-pull-backups.sh), not here.
+LOCAL_KEEP=48
+
+# age public key(s) the backups are encrypted to, one per line. Only the public key lives on the server;
+# the private key stays with the operator / backup host, so a compromised server cannot read old backups.
+AGE_RECIPIENTS_FILE=/usr/local/etc/m2dev-backup.recipients
+
+# Dumped under one global read lock together with users/grants and the manifest: one consistent instant
+LOCKED_DATABASES="account common player"
+# Append-only logs: dumped after the lock is released, so their size never lengthens it
+UNLOCKED_DATABASES="log"
+
+# FLUSH TABLES WITH READ LOCK holds new writes while it waits for writes already running (the game has a few
+# synchronous writes on its main thread, docs/backup.md). The run is skipped, without locking, if a statement has
+# been running for LONG_QUERY_SKIP_S seconds; a lock request not granted within LOCK_WAIT_TIMEOUT seconds is
+# cancelled (KILL QUERY) and the backup retries next run. Worst case for a write: LOCK_WAIT_TIMEOUT.
+LONG_QUERY_SKIP_S=1
+LOCK_WAIT_TIMEOUT=2
+
+# Read under the lock and compared exactly by the restore test. COUNT is cheap; CHECKSUM ... EXTENDED reads the
+# whole table, so it lengthens the lock on big tables: watch lock_ms in the status line and trim if needed.
+COUNT_TABLES="account.account player.player player.item player.quest player.affect player.safebox player.player_index player.guild player.guild_member"
+CHECKSUM_TABLES="account.account player.player player.item player.quest player.affect player.safebox player.player_index player.guild player.guild_member"
+
+# Free space required before a backup starts: this many times the live data directory size
+SPACE_FACTOR=3
+
+# CPU priority (nice) of the work outside the lock; the game processes keep their normal priority
+NICE=10
+
+# Restore test: a temporary directory under RESTORE_WORK_DIR holds the restored copy and is deleted afterwards.
+# The test refuses to start unless RESTORE_SPACE_FACTOR x the dump size plus RESTORE_RESERVE_KB is free there,
+# so it cannot fill the disk a live server is on.
+RESTORE_WORK_DIR=/var/tmp
+RESTORE_SPACE_FACTOR=4
+RESTORE_RESERVE_KB=1048576
+MARIADBD=/usr/local/libexec/mariadbd
+
+# Log of every run (each run also writes one key=value status line to $BACKUP_DIR/status-*)
+LOG_FILE=/var/log/m2dev-backup.log
