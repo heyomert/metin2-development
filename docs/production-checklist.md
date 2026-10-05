@@ -72,17 +72,19 @@ Ayrıntı: `docs/roadmap.md` K-3, `docs/worklog/2026-10-05-admin-channel-config.
       (`docs/worklog/2026-10-05-admin-channel-code.md`). Açılışta `syserr.log`'da "publicly known default" uyarısı **yok**
       (uyarı varsa şifre varsayılan/yer tutucu değerde).
 
-### ☐ K-2 — Hesap şifreleri: veritabanı kısıtları
+### ☐ K-2 — Hesap şifreleri
 
-**Neden:** Giriş, MariaDB'nin `PASSWORD()` fonksiyonuna bağlı (`docs/roadmap.md` K-2). Fonksiyon MySQL 8.0'da yok; MariaDB'de
-`old_passwords=1` olursa farklı biçim üretir. İki durumda da **kimse giriş yapamaz**. Şifre SQL metninde açık gittiği için genel
-sorgu log'u açıksa şifreler oraya yazılır. (B seçeneği yapılınca ilk iki madde zorunlu olmaktan çıkar; üçüncüsü yine iyi uygulama.)
+**Durum:** B yapıldı (`docs/worklog/2026-10-05-k2-password-review.md`): giriş özeti C++'ta hesaplıyor, SQL'e şifre gitmiyor,
+`PASSWORD()`'a ve `old_passwords`'e bağımlılık yok; boş şifre sunucuda reddediliyor. Bu kapı, production `game` binary'sinin
+bu kodu içerdiğini doğrular.
 
-- [ ] Veritabanı sunucusu **MariaDB** (upstream şartı 11.8, `server-src/README.md:873`); MySQL 8 değil.
-- [ ] `old_passwords = 0` ve `PASSWORD()` 41 karakter üretiyor:
-      `mysql -e "SELECT @@old_passwords, LENGTH(PASSWORD('x'))"` → `0 | 41`
+- [ ] Production `game` binary'si K-2 B'yi içeren kaynaktan derlenmiş (binary'de `SELECT PASSWORD(` metni yok:
+      `strings <game> | grep -c "SELECT PASSWORD("` → `0`).
+- [ ] Veritabanı sunucusu **MariaDB** (upstream şartı 11.8, `server-src/README.md:873`). B sonrası giriş için zorunlu değil, ama
+      upstream'in desteklediği ortam bu.
 - [ ] Genel sorgu log'u kapalı (`@@general_log = 0`); geçici açılırsa iş bitince kapatılıp log dosyası silinir.
-- [ ] Gerçek bir hesapla giriş testi (doğru şifre girer, yanlış şifre `WRONGPWD`).
+- [ ] Gerçek bir hesapla giriş testi: doğru şifre `SUCCESS`, yanlış şifre `WRONGPWD`.
+- [ ] Şifresi boş hesap yok: `SELECT COUNT(*) FROM account.account WHERE password=''` → `0` (B bunlara girişi zaten engelliyor).
 
 ## Yapılandırma temizliği (Faz 1.8)
 

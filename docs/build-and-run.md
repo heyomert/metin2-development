@@ -80,9 +80,9 @@ service m2dev start
 - Doğrulama: `mysql -e "SELECT GLOBAL_VALUE, GLOBAL_VALUE_ORIGIN FROM information_schema.SYSTEM_VARIABLES WHERE VARIABLE_NAME='SQL_MODE'"`
   → `NO_ENGINE_SUBSTITUTION | CONFIG`.
 - `bind-address=127.0.0.1` bilinçli olarak böyle (upstream `0.0.0.0` diyor; burada sadece VM içinden erişim).
-- **Giriş `PASSWORD()`'a bağlı:** `old_passwords` `0` kalmalı, MySQL 8'e geçilmemeli, genel sorgu log'u (`general_log`) açık
-  bırakılmamalı — şifreler sorgu metninde açık gidiyor. Kontrol: `SELECT @@old_passwords, LENGTH(PASSWORD('x')), @@general_log` → `0 | 41 | 0`.
-  Ayrıntı: `docs/worklog/2026-10-05-k2-password-review.md`.
+- **Giriş artık `PASSWORD()` kullanmıyor (K-2 B, 2026-10-05):** şifre özeti `game` içinde hesaplanıyor
+  (`server-src/src/game/utils.cpp` → `mysql_native_password_hash`, saklanan `*SHA1(SHA1)` biçimiyle aynı). SQL'e şifre gitmiyor,
+  `old_passwords` ayarı girişi etkilemiyor. Boş şifre sunucuda reddediliyor. Ayrıntı: `docs/worklog/2026-10-05-k2-password-review.md`.
 - Şemalar: `server/sql/*.sql`. Şema değişikliği = `server/sql` dosyası + mevcut DB için migration SQL (PR açıklamasında).
 
 ### Quest derleme

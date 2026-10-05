@@ -1,10 +1,10 @@
-# Hesap şifreleri (K-2): mevcut durum doğrulandı, A uygulandı, B planlandı
+# Hesap şifreleri (K-2): mevcut durum doğrulandı, A ve B uygulandı
 
 - **Tarih:** 2026-10-05
-- **Tür:** karar
+- **Tür:** karar / düzeltme
 - **Alan:** server (auth), db
-- **Durum:** Aktif — A ✅ (sadece doküman), B ☐ planlandı (aşağıda), C → Faz 3
-- **PR / commit:** — (doküman)
+- **Durum:** Aktif — A ✅ (doküman), B ✅ test VM (aşağıda "B uygulaması"), production ☐, C → Faz 3
+- **PR / commit:** A: doküman commit'i; B: (PR eklenecek)
 
 ## Problem / hedef
 Roadmap K-2 "Kritik" olarak duruyordu. Gerçekten değiştirilmesi gerekiyor mu, mevcut durum Metin2'ye göre doğru mu?
@@ -31,7 +31,7 @@ Roadmap K-2 "Kritik" olarak duruyordu. Gerçekten değiştirilmesi gerekiyor mu,
 | **B** ☐ | Aynı biçimi C++'ta üret | MySQL 8 / ayar değişikliği girişi bozamaz; şifre SQL metnine gitmez. Veri değişmez |
 | **C** → Faz 3 | Modern hash (argon2id, libsodium projede var) | DB sızıntısına karşı asıl koruma; ama veri taşıma + web sitesi uyumu + tek thread'li auth'ta yoğunluk riski. Hesap sistemiyle birlikte |
 
-## B planı (onay bekliyor)
+## B planı (onaylandı, uygulandı — aşağıda)
 **Değişiklik:** `input_auth.cpp:268` `SELECT PASSWORD('%s'),password,…` → `SELECT '%s',password,…`, ilk `%s` = C++'ta hesaplanan özet.
 Yardımcı fonksiyon (ör. `game/utils.cpp`): `"*" + UPPER(HEX(SHA1(SHA1(şifre baytları))))`.
 
@@ -50,6 +50,29 @@ Yardımcı fonksiyon (ör. `game/utils.cpp`): `"*" + UPPER(HEX(SHA1(SHA1(şifre 
 
 **Risk:** Orta (giriş yolu). **Geri dönüş:** önceki `game` binary'si. **Kapsam dışı:** channel-service dalı (erişilemez), C.
 
+## B uygulaması (2026-10-05)
+**Kullanıcı kararı:** seçenek 2 — B + sunucu boş şifreyi reddeder.
+Gerekçe: `PASSWORD('')` boş metin döndürüyor; şemada `password` varsayılanı `''`; sunucuda boş şifre kontrolü yoktu
+(sadece client'ta, `client/assets/root/intrologin.py` `len(pwd)==0`). Şifresiz oluşturulan bir hesaba değiştirilmiş client ile boş
+şifreyle girilebiliyordu. VM'de şifresi boş hesap: 0.
+
+**Kod:**
+- `server-src/src/game/utils.cpp/.h`: `mysql_native_password_hash` — `ma_hash_*` (connector) ile SHA1 iki kez, `*` + büyük harf hex.
+  `ma_hash_*` `extern "C"` + `void*` bağlamla bildirildi (`ma_crypt.h` arka uç bayrağı istiyor; imzalar üç arka uçta aynı).
+  Sabitler `<ma_hash.h>`'den. Bağlam NULL ise `false` (inline `ma_hash()` NULL kontrolü yapmıyor, kullanılmadı).
+- `server-src/src/game/input_auth.cpp`: boş şifre → `RecordLoginFailure` + `WRONGPWD` (log: `EMPTY PASSWORD`); özet C++'ta;
+  sorgu `SELECT '<özet>',password,…`. Özet hesaplanamazsa `sys_err` + `WRONGPWD`. Channel-service dalına dokunulmadı (erişilemez).
+
+**Doğrulama:**
+- Ön test (`/root/k2-test`, oyunla aynı bağlantı: `latin1`, aynı kaçış): algoritma kopyası **ve** `game`'e derlenen gerçek
+  fonksiyon (`utils.cpp.o`'ya bağlanarak) `PASSWORD()` ile 148/148 aynı, 0 uyarı — Türkçe (Windows-1254 + UTF-8), 0x80–0xFF tüm
+  baytlar, tırnak/ters bölü/semboller, 16 karakter.
+- Derleme: 0 hata, değişen dosyalarda 0 uyarı (`utils.h` değiştiği için 58 dosya yeniden derlendi). Binary'de `SELECT PASSWORD(` yok.
+- Devreye alma: sadece `game`; önceki (K-3) binary `/root/build-baseline-k3/game`. Temiz açılış, mesh tam, `syserr` boş.
+- Oyun (kullanıcı): doğru şifre `SUCCESS` → oyuna girdi; yanlış şifre 3× `WRONGPWD`; tekrar doğru şifre `SUCCESS` → oyuna girdi.
+- Boş şifre reddi oyunda test edilemez (client göndermiyor); kod okumasıyla doğrulandı, client değiştirilerek test edilmedi.
+
 ## Bir dahaki sefere tuzaklar
+- `game/utils.h`'ye dokunmak ~60 dosyayı yeniden derletir (çoğu dosya ekliyor); süre ~45 sn.
 - Topluluk düzeltmelerini birebir kopyalama: aynı adlı fonksiyon farklı kütüphanede farklı biçim üretebilir.
 - `general_log`'u hata ayıklama için açarsan, B yapılana kadar giriş şifreleri oraya yazılır.

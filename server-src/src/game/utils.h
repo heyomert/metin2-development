@@ -63,6 +63,10 @@ extern int parse_time_str(const char* str);
 
 extern bool WildCaseCmp(const char *w, const char *s);
 
+// "*" + upper-case HEX(SHA1(SHA1(pw))): the MySQL 4.1+ native password hash, identical to MariaDB
+// PASSWORD() with old_passwords=0. Returns false if the hash backend is unavailable.
+extern bool mysql_native_password_hash(const char* pw, size_t len, std::string& out);
+
 namespace utils
 {
 	inline bool iequals(const std::string& a, const std::string& b) {

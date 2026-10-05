@@ -18,6 +18,6 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-05 | [Yönetim kanalı şifresi ve conf izinleri (K-3, config)](2026-10-05-admin-channel-config.md) | düzeltme / ortam | runtime | Aktif | #6 |
 | 2026-10-05 | [Server derleme doğrulandı; MariaDB kütüphanesi farklı ayarla derlenmiş](2026-10-05-server-build-verify.md) | ortam | build | Taşındı → build-and-run.md | — |
 | 2026-10-05 | [Yönetim kanalı: port güvenliği geri getirildi, şifre log'larda maskelendi (K-3, kod)](2026-10-05-admin-channel-code.md) | düzeltme / karar | server | Aktif | #7 |
-| 2026-10-05 | [Hesap şifreleri (K-2): durum doğrulandı, A uygulandı, B planlandı](2026-10-05-k2-password-review.md) | karar | server / db | Aktif | — |
+| 2026-10-05 | [Hesap şifreleri (K-2): durum doğrulandı, A ve B uygulandı](2026-10-05-k2-password-review.md) | karar / düzeltme | server / db | Aktif | — |
 
 <!-- Eski yıllar: README-<yıl>.md -->
