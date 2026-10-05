@@ -4,7 +4,7 @@
 - **Tür:** özellik / karar / ortam
 - **Alan:** server-src / runtime
 - **Durum:** Aktif
-- **PR / commit:** —
+- **PR / commit:** [#12](https://github.com/heyomert/metin2-development/pull/12)
 
 ## Problem / hedef
 Roadmap 1.5, 1. adım. Ana döngü sağlık verisini hesaplıyor ama yazmıyordu: `main.cpp`'deki `s_dwProfiler` sayaçları

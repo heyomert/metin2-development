@@ -1,15 +1,14 @@
 # Durum
 
-Kapsadığı commit: `feat/server-metrics` dalı (2026-10-05; taban 0b6d9f00). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline 0b6d9f00..HEAD -- . ':!docs/status.md'` bu daldan başka bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: PR #12 merge'ü (2026-10-05; taban 0b6d9f00). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline 0b6d9f00..HEAD -- . ':!docs/status.md'` PR #12 dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-Sunucu sağlık kaydı (roadmap 1.5, 1. adım) test VM'de çalışıyor: game süreçleri 10 sn'de bir `log/metrics_<gün>.log` yazıyor, 14 gün saklanıyor. Okuma: `docs/monitoring.md`; özet: `tools/metrics/m2metrics.py`. Test sonuçları ve VM olayı (askıya alma → Aria kaydı bozuldu, kurtarıldı): `docs/worklog/2026-10-05-server-metrics.md`. Önceki işler (font, config.exe, anizotropi, Faz 1 güvenlik) merge'lü. Production ☐.
+Sunucu sağlık kaydı (roadmap 1.5, 1. adım; PR #12 merge) test VM'de çalışıyor: game süreçleri 10 sn'de bir `log/metrics_<gün>.log` yazıyor, 14 gün saklanıyor. Okuma: `docs/monitoring.md`; özet: `tools/metrics/m2metrics.py`. Test sonuçları ve VM olayı (askıya alma → Aria kaydı bozuldu, kurtarıldı): `docs/worklog/2026-10-05-server-metrics.md`. Önceki işler (font, config.exe, anizotropi, Faz 1 güvenlik) merge'lü. Production ☐.
 
 ## Sıradaki
-1. Metrik dalı: PR + merge (onayınla)
-2. Monitoring 2. adım: süreç RAM/CPU, db süreci, grafik (Prometheus/Grafana → VM'e paket kurulumu, ayrı onay)
-3. DB yedeği + restore testi (1.6): bu oturumdaki Aria olayı gerekliliğini gösterdi; core dump + çökme uyarısı (1.7)
+1. Monitoring 2. adım: süreç RAM/CPU, db süreci, grafik (Prometheus/Grafana → VM'e paket kurulumu, ayrı onay)
+2. DB yedeği + restore testi (1.6): bu oturumdaki Aria olayı gerekliliğini gösterdi; core dump + çökme uyarısı (1.7)
 
 ## Senden bekleyen kararlar
 - `heart_idle` gecikmede fazladan pulse sayıyor (roadmap teknik borç): yük testinden önce etki analizi yapılsın mı
