@@ -90,6 +90,13 @@ bu kodu içerdiğini doğrular.
 
 - [ ] `common.gmhost` içinde `*.*.*.*` yok; GM erişimi sadece gerekli IP'lerle sınırlı
 - [ ] Test hesapları (`admin`, `test`) ve test şifreleri kaldırıldı/değiştirildi
+- [ ] **İzin/sahiplik doğrulaması (A-12) temiz** ve her deploy'un sonunda çalışıyor (`docs/engineering/a12-permissions.md` §7):
+      kurulum ağacında ve derleme kaynağında grup/herkes yazılabilir öğe yok; root'un çalıştırdığı dosya ve dizinleri
+      sadece yetkili deploy kimliği yazabiliyor; runtime yazma alanları sadece tanımlı yerler (`channels/*/`, `log/`,
+      `share/mark`, `pids.json`). Kurulum arşivdeki modlara güvenmeden, modları normalleştiren yolla yapıldı.
+- [ ] `perms.py` çalıştırılmadı (ya da `0777` ve `/var/db/mysql` bölümleri kaldırılmış sürümü); `/var/db/mysql` MariaDB
+      varsayılanında (`mysql:mysql`, dizin `0700`, dosya `0660`), hiçbir dosya herkese okunur/yazılır değil
+- [ ] Tanımsız giriş hesabı yok (`m2build` gibi); her hesabın amacı belgelenmiş, servis hesapları `nologin`
 - [ ] MariaDB `sql_mode=NO_ENGINE_SUBSTITUTION` aktif ve ayar dosyası `mysql` kullanıcısı tarafından okunabilir (`docs/build-and-run.md` → Veritabanı)
 - [ ] Sunucu açılışta kendiliğinden başlıyor (`service m2dev` ya da eşdeğeri) ve `start.py` konsola bağlı süreç bırakmıyor (`docs/worklog/2026-10-04-vm-autostart-sighup.md`)
 - [ ] Client `serverinfo.py` üretim sunucusunu gösteriyor; "02. Test" kaydı kaldırıldı ya da gerçek bir test sunucusuna yönlendirildi
