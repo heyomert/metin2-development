@@ -2,7 +2,8 @@
 
 add_executable(game ${GAME_SOURCES})
 
-target_compile_definitions(game PRIVATE GIT_DESCRIBE="${GIT_DESCRIBE_VERSION}")
+add_dependencies(game m2_build_identity)
+target_include_directories(game PRIVATE ${M2_BUILD_IDENTITY_DIR})
 
 target_link_libraries(game
 	common

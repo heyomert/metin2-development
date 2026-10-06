@@ -1,26 +1,6 @@
-﻿#include <stdio.h>
-#include <stdlib.h>
+﻿#include "m2_build_identity.h"
 
-#ifndef GIT_DESCRIBE
-#define GIT_DESCRIBE "unknown"
-#endif
-
-void WriteVersion()
-{
-#ifndef OS_WINDOWS
-	FILE* fp(fopen("VERSION.txt", "w"));
-
-	if (NULL != fp)
-	{
-		fprintf(fp, "db revision: %s\n", GIT_DESCRIBE);
-		//fprintf(fp, "%s@%s:%s\n", __USER__, __HOSTNAME__, __PWD__);
-		fclose(fp);
-	}
-	else
-	{
-		fprintf(stderr, "cannot open VERSION.txt\n");
-		exit(0);
-	}
-#endif
-}
-
+#define M2_COMPONENT "db"
+#define M2_VERSION_FILE "VERSION.txt"
+#define M2_VERSION_EXIT_ON_FAIL 1 // upstream behaviour: db stops when it cannot write its version file
+#include "common/build_identity_impl.h"

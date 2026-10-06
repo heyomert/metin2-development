@@ -95,6 +95,7 @@ def summarise_sql(lines, conn_limit):
         exec_n = total("exec_n")
         print(f"== {host}  {sums[0]['ts']:%Y-%m-%d %H:%M:%S} .. {sums[-1]['ts']:%H:%M:%S}  windows={len(sums)}  "
               f"process starts seen={len(pids)}  connections={sums[-1].get('conns')}")
+        print_builds(sums)
         print(f"   queued {total('pushed')}, ok {total('ok')}, err {total('err')} (not applied), retry {total('retry')}, "
               f"reconnect_seen {total('reconnect_seen')}; errno " + ", ".join(f"{e} {total(e)}" for e in SQL_ERRNOS))
         print(f"   exec avg {(total('exec_us') / exec_n / 1000) if exec_n else 0:.2f} ms, max {worst('exec_max_us') / 1000:.1f} ms; "
@@ -118,6 +119,31 @@ def summarise_sql(lines, conn_limit):
                 print(f"     final {r['ts']:%Y-%m-%d %H:%M:%S}  {r.get('owner')}/{r.get('target')}/{r.get('role')}  "
                       f"unexecuted_at_quit={r.get('unexecuted_at_quit')} (never executed; not proof of data loss)")
         print()
+
+
+def build_label(r):
+    """Build identity carried by a telemetry line (build/build_dirty/build_src, roadmap 1.9). Lines written by binaries
+    from before the identity existed have no such fields."""
+    if "build" not in r:
+        return "no build field (older binary)"
+    commit = r.get("build", "?")
+    short = commit[:12] if len(commit) == 40 else commit
+    return f"{short} dirty={r.get('build_dirty', '?')} src={r.get('build_src', '?')}"
+
+
+def print_builds(rows):
+    """One line per build seen in the period; a change of build inside the period is listed with its time."""
+    seen = []
+    for r in rows:
+        label = build_label(r)
+        if not seen or seen[-1][1] != label:
+            seen.append((r["ts"], label))
+    if len(seen) == 1:
+        print(f"   build {seen[0][1]}")
+    else:
+        print(f"   builds in this period ({len(seen)}):")
+        for ts, label in seen:
+            print(f"     from {ts:%Y-%m-%d %H:%M:%S}  {label}")
 
 
 def fmt_bytes(n):
@@ -148,6 +174,7 @@ def summarise(records, lag_list_limit):
         print(f"== {host} (ch {rows[-1].get('ch', '?')}, port {rows[-1].get('port', '?')})  "
               f"{first:%Y-%m-%d %H:%M:%S} .. {last:%H:%M:%S}  windows={len(rows)}  "
               f"process starts seen={len(pids)}")
+        print_builds(rows)
         print(f"   users_local max {max(r.get('users_local', 0) for r in rows)}, "
               f"pcs max {max(r.get('pcs', 0) for r in rows)}, "
               f"chars_total max {max(r.get('chars_total', 0) for r in rows)}, "

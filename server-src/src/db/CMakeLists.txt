@@ -2,7 +2,8 @@
 
 add_executable(db ${DB_SOURCES})
 
-target_compile_definitions(db PRIVATE GIT_DESCRIBE="${GIT_DESCRIBE_VERSION}")
+add_dependencies(db m2_build_identity)
+target_include_directories(db PRIVATE ${M2_BUILD_IDENTITY_DIR})
 
 target_link_libraries(db 
 	common
