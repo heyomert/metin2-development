@@ -20,18 +20,37 @@ Derleme kaynağı `/usr/local/m2dev-acceptance/server-src`: 1.585 öğenin 1.582
 Üst dizinler (`/usr/local`, `/usr/local/m2dev-acceptance`) `0755`; yani yerel her kullanıcı bu ağaca ulaşabilir.
 
 ## 2. Kök neden
-1. **Tek seferde, zaman damgası korunarak taşındı (Kanıtlı).** `share/data` altındaki 6.169 dosyanın oluşma zamanı aynı
-   dakika (2026-10-04 11:51); VM'deki değiştirme zamanları Windows checkout'undaki dosyalarla birebir aynı (`start.py`,
-   `perms.py`, `share/data`: 11:51).
-2. **Mod deseni Windows `tar.exe` (bsdtar 3.5.2) ile birebir yeniden üretildi (Kanıtlı).** Aynı dosyalar Windows'ta
-   `tar.exe` ile arşivlendiğinde: dosya `0666`, dizin `0777`, `qc.exe` `0777`. Git Bash'in GNU tar'ı ise `0644`/`0755`
-   üretiyor. `/root/m2dev-server-snapshot.tar.gz` (sonradan alınmış anlık görüntü) içinde de modlar sadece `0666`, `0777`,
-   `0777` (`.exe`).
-3. **FreeBSD `tar` root olarak açarken arşivdeki modları umask uygulamadan korur** (bsdtar, root için `-p` varsayılan) →
+1. **Arşivle, zaman damgaları korunarak taşındı (Kanıtlı).** VM'deki değiştirme zamanları Windows checkout'undaki
+   dosyalarla birebir aynı (`start.py`, `perms.py`, `share/data`: 2026-10-04 11:51). Bu zamanlar **aktarım anı değil**:
+   işletim sistemi 16:19–16:36 arasında kuruldu (`/var/log/bsdinstall_log`, ilk açılış 16:36), dosyaların "oluşma"
+   zamanı (11:51) ondan önce görünüyor çünkü FreeBSD, açılan dosyaya eski bir zaman yazılınca oluşma zamanını da geri
+   çeker. Gerçek açılma anı inode değişim zamanında: **16:52:05–06** (`stat` `ctime`). (Düzeltme, 2026-10-06: ilk
+   sürüm aynı dakikadaki "oluşma" zamanını tek seferlik aktarımın kanıtı saymıştı; o dakika Windows checkout'unun anı.)
+2. **Aktarım arşivi `/root/m2dev-server-snapshot.tar.gz` (Kanıtlı).** VM'de 16:52:04'te oluştu, ağaç 16:52:05'te açıldı;
+   gzip başlığındaki sıkıştırma zamanı 16:49:26. İçindeki modlar sadece `0666`, `0777`, `0777` (`.exe`). (İlk sürüm bunu
+   "sonradan alınmış anlık görüntü" diye yanlış adlandırmıştı.)
+3. **Arşivin parmak izi: Windows'ta libarchive biçimi (Kanıtlı); üreten araç kesin bağlanmıyor.** Aynı dosyalar dört araçla
+   arşivlenip karşılaştırıldı:
+
+   | | gzip OS baytı | tar başlığı | uid / kullanıcı adı | mod alanı | modlar |
+   |---|---|---|---|---|---|
+   | VM'deki arşiv | 3 | `ustar\0` `00` | 0 / boş | `000666 ` | `0666`/`0777` |
+   | Windows `tar.exe` (bsdtar 3.5.2, libarchive) | 3 | `ustar\0` `00` | 0 / boş | `000666 ` | `0666`/`0777`, `.exe` `0777` |
+   | Git Bash GNU tar | 3 | farklı | 601751 / `mertw` | `0000644` | `0644`/`0755` |
+   | FreeBSD `tar` (libarchive, Unix) | 3 | `ustar\0` `00` | 0 / **`root`** | `000666 ` | diskteki modlar |
+   | Python `tarfile` | 255 | `ustar\0` `00` | 0 / boş | farklı | — |
+
+   - **Kanıtlı:** biçim libarchive'e özgü; **boş kullanıcı adı** (Unix'teki libarchive `root` yazar) ve NTFS kaynaklı
+     `0666`/`0777` mod deseni Windows'u gösteriyor.
+   - **Kanıtlı:** test edilen araçlar içinde arşivle birebir uyuşan yalnız Windows `tar.exe` (libarchive).
+   - **Kesin bağlanmıyor:** ilk arşivi tam olarak hangi programın ürettiği; aynı çıktıyı verebilecek, test edilmemiş Windows
+     araçları (libarchive kullanan başka programlar dahil) dışlanamadı.
+   - **Unverified:** arşivi kimin, hangi komutla oluşturduğu.
+4. **FreeBSD `tar` root olarak açarken arşivdeki modları umask uygulamadan korur** (bsdtar, root için `-p` varsayılan) →
    modlar olduğu gibi kaldı. VM'de sonradan oluşan her şey (kanal dizinleri, quest çıktısı, log'lar) root'un umask'ıyla
    `644`/`755`; ayrım bunu doğruluyor.
-4. **İlk gerçek aktarımda kullanılan araç ve komut kayıtlı değil (Unverified).** Kanıtlar Windows bsdtar ile tutarlı;
-   başka bir araç dışlanmadı.
+5. **Kim ve hangi komutla (Unverified).** Zaman ve arşivin Windows/libarchive parmak izi kanıtlı; üreten program kesin
+   bağlanmıyor (3. madde); çalıştıran kişi ya da otomasyon kayıtlı değil.
 
 ### `perms.py`'nin payı (Kanıtlı, `server/perms.py`)
 `perms.py` ağacın izinlerini **açıklamaz**; sadece şunları değiştirir:
@@ -72,11 +91,16 @@ taşımak ayrı bir en-az-yetki tasarımıdır; bu analizin kapsamı değil.
 ## 6. Yerel hesaplar (Kanıtlı)
 `nobody`, `m2stat` (nologin, dbstat; `docs/engineering/db-step1b-collector.md`) ve **`m2build`**: uid 1001, `/bin/sh`,
 parolası var, **`wheel` grubunda** (FreeBSD'de `su` ile root'a geçiş bu grubu gerektirir), SSH anahtarı yok,
-2026-10-04 16:31'de oluşturulmuş; ev dizininde sadece varsayılan dosyalar, başka sahip olduğu dosya ve crontab yok, giriş
-kaydı yok. Dokümanlarda geçmiyor; **amacı kayıtlı değil (Unverified)**. SSH: `passwordauthentication no`,
+**FreeBSD kurulum programının "adduser" adımında oluşturulmuş** (Kanıtlı: `/var/log/bsdinstall_log` "Running
+installation step: adduser"; `/var/log/userlog` 2026-10-04 16:31:22, ilk açılıştan önce). Ev dizininde sadece varsayılan
+dosyalar; başka sahip olduğu dosya, crontab, çalışan süreç, oturum, soket yok; giriş kaydı yok; repo, rc/servis, cron ve
+derleme/deploy akışında referansı yok (belgelenmiş derleme ve deploy root ile yapılıyor); `sudo`/`doas` kurulu değil, tek
+yetki yolu `wheel` (`su`). **Bugün hiçbir bağımlılığı görülmedi; kurulumda neden eklendiği kayıtlı değil (Unverified).** SSH: `passwordauthentication no`,
 `kbdinteractiveauthentication yes` (PAM üzerinden parola sorusu mümkün olabilir; **denenmedi**). VM sadece host-only ağda.
 Herkese yazılabilir ağaç, giriş yapabilen her hesap için root'a giden bir yoldur. Not: analiz sırasında bu hesabın parola
-özeti oturum çıktısına düştü (repoya yazılmadı) → parola ifşa olmuş kabul edilmeli.
+özeti oturum çıktısına düştü (repoya yazılmadı) → parola ifşa olmuş kabul edilmeli. **2026-10-06: parola ile girişi
+kilitlendi** (`pw lock m2build`; hesap, ev dizini, kabuk ve grup üyeliği değişmedi; servis yeniden başlatılmadı). Hesaba
+yeniden ihtiyaç olursa eski parola açılmaz; yeni kimlik bilgisi ve en az yetkili rol ayrıca tasarlanır.
 
 ## 7. Hedef sözleşme (Öneri; değişiklikler ayrı onayla)
 **İlke:** root'un çalıştırdığı ya da okuduğu hiçbir şey, sadece yetkili derleme/deploy kimliği dışında yazılabilir olmaz;
