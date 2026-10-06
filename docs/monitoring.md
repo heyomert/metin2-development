@@ -197,15 +197,18 @@ bilinmiyor (1.9), T-3 disk boş alanı ölçülmüyor, T-4 `service m2dev status
 
 # Olay teşhisi (insan ve agent)
 
-Bir sorun bildirildiğinde kodu taramadan önce **bu sırayla** salt okunur kaynaklara bak. Hepsi test VM'de `ssh bsd` ile,
-okuma yetkisiyle yeterli; hiçbiri veri değiştirmez.
+Bir sorun bildirildiğinde kodu taramadan önce **bu sırayla** salt okunur kaynaklara bak; hiçbiri veri değiştirmez.
+**Bugünkü okuma yetkileri** (test VM, 2026-10-06, yetkisiz kullanıcıyla denendi): `ssh bsd` **root** olarak girer, bütün
+kaynakları o okur. Root olmayan bir kullanıcı game süreçlerinin `log/` dosyalarını, `syserr.log`'u ve `pids.json`'u okuyabilir
+(`644`); dbstat'ı (`/var/log/m2dev-metrics`, `0750 m2stat:wheel`) ve yedek durum dosyalarını (`/var/backups/m2dev`, `0700`,
+dosyalar `0600 root`) **okuyamaz**. Root gerektirmeyen ortak salt-okuma grubu Faz 3 işi (`docs/roadmap.md` 3.1).
 
 | Soru | Kaynak | Komut / yer |
 |---|---|---|
 | Hangi süreçler çalışıyor, yeniden başladı mı? | dbstat `kind=proc` (`first=1`, `pid` değişimi), game satırlarında `pid`/`uptime_s` | `m2metrics.py --dbstat … --hours 1`; `pids.json`. `service m2dev status`'a güvenme (T-4) |
 | Lag var mı, hangi çekirdekte? | game sağlık satırı: `late_pulses`, `iter_gap_max_us`, `work_max_us`, bölüm payları | `m2metrics.py --hours 1` |
 | Döngü mü, işletim sistemi mi? | `iter_gap_max_us` büyük ama `work_max_us` küçük → süreç çalışamadı (CPU/swap/VM); dbstat `load1`, `mem_free_mb`, `swap_used_mb` | yukarıdaki iki özet |
-| MariaDB mi, disk mi? | dbstat: `row_lock_waits/time_ms`, `deadlocks`, `table_locks_waited`, `threads_running`, `ms_w`, `qlen`, `busy_pct`, `mariadbd` CPU | `m2metrics.py --dbstat` |
+| MariaDB mi, disk mi? | dbstat: `row_lock_waits/time_ms`, `deadlocks`, `table_locks_waited`, `threads_running`, `ms_w`, `qlen`, `busy_pct`, `mariadbd` CPU | `m2metrics.py --dbstat` (root ya da `m2stat`/`wheel`) |
 | SQL kuyruğu mu? | DB adım 1c kabul edilince `log/sql_*.log` (kuyruk, en eski bekleyen, takılma, hata/tekrar, SAVE sonuçları) | 1c belgesi |
 | Yedek mi? | `status-backup-hot` (`lock_ms`, `duration_s`, zaman); dakika :17'de çalışır | `/var/backups/m2dev/status-*` (root) |
 | Son yedek/geri yükleme testi sağlam mı? | `status-backup-*`, `status-restore-test` (`result`, zaman → yaş), yedek makinesinde `status-pull`/`status-daily` | `docs/backup.md` |
