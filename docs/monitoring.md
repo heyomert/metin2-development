@@ -174,6 +174,13 @@ Panel, yönetim servisi ve teşhis yapan agent'lar bu kaynakları **olduğu gibi
 "Kontrol katmanı ilkeleri"). Yeni bir telemetri kaynağı ya da alanı bu kurallara uyar:
 - **Biçim:** tek satır, `<yerel zaman %Y-%m-%dT%H:%M:%S%z> anahtar=değer ...`; değerde boşluk ve `=` yok. Alanlar **adıyla**
   okunur, sırayla değil. Yeni alan eklenebilir; bir alanın anlamı ya da biçimi değişirse `schema` artar.
+- **UTC farkının iki yazımı:** kaynaklar aynı farkı iki biçimde yazar ve okuyucular **ikisini de** kabul etmelidir
+  (2026-10-06'da gerçek dosyalarda doğrulandı; başka biçim görülmedi):
+  - `+03:00` — spdlog desenindeki `%z`: game sağlık satırı (`metrics_*.log`; `game/server_metrics.cpp`).
+  - `+0300` — C `strftime`/`date` `%z`: dbstat satırı ve `time=` alanı olan durum dosyaları (`status-backup-*`,
+    `status-restore-test`, yedek makinesinin `status-pull`/`status-daily`'si).
+  Aynı anı gösterirler; Python `datetime.strptime(..., "%Y-%m-%dT%H:%M:%S%z")` ikisini de ayrıştırır (`m2metrics.py`).
+  Biçimleri eşitlemek için çalışan kod değiştirilmez.
 - **Kaynak:** `src=` alanı ya da dosya öneki (`metrics_` game sağlık satırı — `src` alanı yok, dosya önekinden anlaşılır;
   `dbstat_`; `status-*` yedek/restore-test). Süreç başına dosyalar sürecin `log/` klasöründe, günlük, 14 gün.
 - **Değer türleri:** Δ (pencere farkı), kümülatif toplam (`*_total`, süreç başından beri) ve anlık ayrı adlandırılır ya da
