@@ -35,18 +35,16 @@ old_syserr() { printf '[2026-10-05 22:59:29.000] [error] [x()] OLD RUN %s\n' "$1
 STAMP=2026-10-05_22-59-30 # local time of the touch above, the name the archive must get
 
 if [ "$MODE" = load ]; then
-	echo "producer cost of $LINES syserr lines, flush_on(err) off/on, $REPS alternating runs each (fresh dir per run)"
+	echo "$LINES syserr lines, flush_on(err) off/on alternating, modes bare / sampled / per-line, $REPS runs each (fresh dir per run)"
 	for r in $(jot "$REPS"); do
-		for f in 0 1; do
-			case_dir "load-$r-$f"
-			"$H" load "$LINES" $f
-			n=$(grep -c 'UNKNOWN HEADER' syserr.log)
-			[ "$n" = "$LINES" ] || bad "flush=$f run $r: $n of $LINES lines on disk"
-			case_dir "total-$r-$f"
-			"$H" load "$LINES" $f total
-			n=$(grep -c 'UNKNOWN HEADER' syserr.log)
-			[ "$n" = "$LINES" ] || bad "flush=$f total run $r: $n of $LINES lines on disk"
-			rm -rf "$W/load-$r-$f" "$W/total-$r-$f" # ~50 MB each
+		for m in bare sampled per-line; do
+			for f in 0 1; do
+				case_dir "load-$r-$m-$f"
+				"$H" load "$LINES" $f $m
+				n=$(grep -c 'UNKNOWN HEADER' syserr.log)
+				[ "$n" = "$LINES" ] || bad "mode=$m flush=$f run $r: $n of $LINES lines on disk"
+				cd "$W" && rm -rf "$W/load-$r-$m-$f" # ~50 MB each
+			done
 		done
 	done
 	echo; [ $FAIL -eq 0 ] && echo "LOAD COMPLETE (every line on disk)" || echo "LOAD FAILED ($FAIL)"

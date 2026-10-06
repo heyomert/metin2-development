@@ -48,10 +48,18 @@ alınırsa en eski görünebilir). `g_syserr->flush_on(err)`. Sözleşme: `docs/
   32 → 30 budama, sayısal sonek sırası (`_2` < `_10`); `syslog_`/`metrics_`/`sql_`, 5 benzer ad, aynı adlı dizin ve symlink
   (ve hedefi) dokunulmadı; saat geri → yeni arşiv korundu; silinemeyen arşiv → diğerleri budandı, tek uyarı; ardışık 3 çalışma;
   SIGSEGV 20/20 satır diskte ve sonraki açılış arşivledi; `abort()`-hemen 1/20 (bilinen sınır). PASSED.
-- `tools/syserr-archive/run.sh load` (200.000 satır, `flush_on` kapalı/açık dönüşümlü, VM'de canlı sunucu çalışırken): saat
-  okumasız toplam süre satır başına medyan 19,0 µs (kapalı) / 18,9 µs (açık); kuyruk en çok 137/16.384 (`block` hiç devreye
-  girmedi); boşaltma ≤1 ms; her satır diskte. Tek tük ms'lik tepeler iki modda da. Not: bu VM'de `steady_clock::now()` ~11,6 µs,
-  satır başı ölçümün mutlak değerini şişirir; karşılaştırmayı etkilemez.
+- `tools/syserr-archive/run.sh load` (200.000 satır, `flush_on` kapalı/açık dönüşümlü, 5'er koşu, VM'de canlı sunucu
+  çalışırken), üç ölçüm modu ayrı:
+  - `bare` (döngüde saat/kuyruk okuması yok, tam hız): satır başına medyan **19,8 µs (kapalı) / 20,2 µs (açık)**.
+  - `sampled` (kuyruk her 256 satırda, saat her 1024 satırda; `bare`'e yakın: medyan 19,1 / 19,7 µs): örneklenen kuyruk tepesi
+    medyan 76 / 160, en çok **86 / 352**; gerçek tepe ≤ örnek + 256 (+4 periyodik flush mesajı) → en kötü **≤ 612 / 16.384**:
+    kuyruk hiç dolmadı, `block` üreticiyi hiç bekletmedi. `flush_on` açıkken log thread'i biraz yavaşlıyor (kuyruk tepesi
+    büyüyor) ama yetişiyor: üretim bitiminde kuyrukta ≤7 mesaj, boşaltma ≤1 ms. 1024'lük parti başına satır süresi p99 medyanı
+    27,9 / 26,8 µs, en kötü parti 37,5 / 59,3 µs.
+  - `per-line` (satır başına iki saat okuması; bu VM'de `steady_clock::now()` ~11,6 µs → üretici ~3 kat yavaş, satır başı
+    toplam ~56 µs): p50 ~26–30 µs, >10 ms 0. Bu moddaki kuyruk tepeleri (≤164) yavaş üreticiye ait; `block` kanıtı için
+    `sampled` kullanılır (önceki "137/16.384" rakamı bu yavaş moddan geliyordu, düzeltildi).
+  - Her koşuda 200.000 satırın hepsi diskte.
 - `tools/sql-reliability/run.sh` aynı libthecore ile: koruma öz-testi 3/3 ret, 13 senaryo 10/10 aynı; S1–S11 davranış satırları
   (`stats` hariç) 1a baseline'ıyla birebir aynı (26/26). `sqlrt` her senaryoyu boş dizinde çalıştırdığı için arşivleme devreye
   girmiyor.
