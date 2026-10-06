@@ -111,9 +111,10 @@ cmake --build /root/build-verify -j4
   - `/usr/local/m2dev-acceptance/build/server-freebsd`: 4 Ekim derlemesi. Sunucu kodu `-O3`, ama vendor MariaDB kütüphanesi
     `-O2 -g` ile derlenmiş (`libmariadbclient.a` 3,5 MB, debug bilgili). Sebebi kayıtlı değil. **Artık kullanılmıyor.**
   - `/root/build-verify`: yukarıdaki komutla sıfırdan; her şey `-O3`, MariaDB kütüphanesi debug bilgisiz (0,9 MB). **Bundan sonra burada derle.**
-- **Şu an çalışan binary'ler (2026-10-06):** `game` ve `db` → DB adım 1c (PR #17, `/root/build-1c`, kaynak `/root/src-1c`);
-  `qc` → 4 Ekim derlemesi. Önceki çift `/root/pre-1c-2026-10-06/` (sha256 ile). Bu binary'lerin gömülü kimliği yok
-  (derleme kimliğinden önce derlendi).
+- **Şu an çalışan binary'ler (2026-10-06):** `game` ve `db` → `f62f10833` (PR #20 merge; `src=archive`, `/root/build-f62f10833b44`),
+  installer ile kuruldu; kimlik `share/bin/BUILD` ve `/var/db/m2dev/deploy.log`'da. Önceki çift (1c, PR #17, gömülü kimliksiz)
+  `share/bin/.prev.20261006T202254Z.51584/`'de; ondan önceki çift `/root/pre-1c-2026-10-06/`'da (sha256 ile). `qc` → 4 Ekim
+  derlemesi.
 - VM kaynak dosyaları: değiştirdiğin dosyayı VM'e LF olarak kopyala (`tr -d '\r' < dosya | ssh bsd "cat > hedef"`), sonra özetleri
   karşılaştır. VM'deki diğer kaynak dosyalar CRLF (Windows checkout'tan); derleyici için fark etmez.
 - Debug bilgisi kararı: çökme analizinde (roadmap 1.7) debug bilgili binary işe yarar. `Release` debug bilgisi içermiyor;
@@ -160,6 +161,16 @@ doğrulama ya da kayıt adımı başarısız olursa önceki çift (ve `BUILD`) g
 hepsi başarılıysa yazılır (`result=failed rolled_back=1` denetim için). Süreç kontrolü `procstat -b -a` ile gerçek binary
 yolundan yapılır (`service m2dev status`'a güvenilmez, T-4). Modlar: binary `0755`, `BUILD` `0644`, `deploy.log` `0640`,
 dizinler `0750`/`0700`; herkese yazılabilir bir şey oluşturulmaz. Testler: `deploy/freebsd/test-install-binaries.sh`.
+
+**Gömülü kimliği olmayan bir çifte elle geri dönüş.** Kimlikten önce derlenen binary'lerde (1c ve öncesi) işaret yoktur;
+installer onları her politikada reddeder (beklenen sınır). Geri dönmek gerekirse önceki durumun **tamamı** geri getirilir:
+1. `service m2dev stop`; `procstat -b -a` ile `share/bin`'den çalışan game/db kalmadığını doğrula.
+2. `.prev.<zaman>.<pid>/{game,db}`'yi `share/bin`'e kopyala (`cp -p`, sonra `mv -f` ile yerine), iki SHA-256'yı `deploy.log`
+   satırındaki `prev_game_sha256` / `prev_db_sha256` ile doğrula.
+3. `share/bin/BUILD`: kurulumdan önce vardıysa `.prev`'deki kopyayı geri koy; **yoktuysa sil** (eski binary'yi yeni kimlikle
+   etiketli bırakma).
+4. `deploy.log` silinmez; geri dönüş yeni bir satırla kaydedilir (`result=manual_rollback`, geri konan SHA'lar, neden).
+5. `service m2dev start`; 6 süreç (`procstat -b`), giriş ve temel sağlık (`m2metrics.py`, `syserr`) doğrulanır.
 
 **Kanıtın sınırı:** gömülü işaret = binary'nin kendi kaynak kimliği **beyanı**; SHA-256 = kurulan **tam dosya**; temiz git
 derleme yolu = kaynak ağacının **doğrulanmış** durumu. Hiçbiri tek başına imzalı derleme/özgünlük kanıtı değildir; işaret

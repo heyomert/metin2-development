@@ -268,7 +268,7 @@ Panel, yönetim servisi ve teşhis yapan agent'lar bu kaynakları **olduğu gibi
   (`docs/build-and-run.md` → "Kanıtın sınırı"). dbstat ayrı derlenir, henüz kimlik taşımaz.
 
 **Bilinen teşhis açıkları** (`docs/roadmap.md`): T-1 `syserr.log` yeniden başlatmada sıfırlanıyor; T-2 (1.9) derleme
-kimliği mekanizması var, ama kimlikten önce derlenen binary'ler ve production temiz-git derleme yolu henüz yok; T-3 disk boş
+kimliği test VM'de çalışan süreçlerde doğrulandı, production temiz-git derleme yolu henüz yok; T-3 disk boş
 alanı ölçülmüyor; T-4 `service m2dev status` tek süreç canlıyken sağlıklı görünüyor.
 
 # Olay teşhisi (insan ve agent)

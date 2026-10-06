@@ -71,8 +71,14 @@ kur → SHA → `BUILD`/`deploy.log`, her adımda geri alma; production sadece `
   `prev_game_sha256` = değiştirilen 1c binary'si.
 - `tools/metrics/test_m2metrics.py`: gerçek eski satırlar okunuyor; yeni satırlar derlemeyi gösteriyor; dönem içi değişiklik
   listeleniyor; mevcut alanlar değişmiyor.
-- **Henüz doğrulanmadı:** çalışan süreçlerde `version.txt` ↔ telemetri ↔ `deploy.log` (VM'de kurulum + yeniden başlatma, ayrı
-  onay); production temiz-git release yolu (git'li derleme makinesi, ayrı onay).
+- **Uçtan uca, test VM (2026-10-06, `f62f10833` = PR #20 merge, `archive` + `--policy test-vm`):** stop (game'ler "End of pid" yazdı) → consistent yedek
+  `result=ok` → kurulum (`.prev` = 1c SHA'ları; kurulumdan önce `BUILD` yoktu) → start → 6 süreç `share/bin`'den; `version.txt`,
+  `BUILD:`, sağlık ve SQL `build=`, `BUILD`, `deploy.log`, canlı ve derleme SHA-256'sı aynı; `syserr` (zaman/PID normalize)
+  önceki açılışla aynı; satır başına +79 B; `m2metrics` derleme değişikliğini gösterdi; oyuna giriş (ch1 core3), SQL hatası 0.
+  **Beklenmeyen:** db "End of pid" yazmadı — upstream kapanış sırası (log önce kapanıyor), düzgün kapanış `reason=final`
+  satırlarıyla kanıtlı; roadmap teknik borç. Kimliksiz bir çifte geri dönüş installer'la yapılamaz → elle geri dönüş
+  sözleşmesi `docs/build-and-run.md`'de.
+- **Henüz doğrulanmadı:** production temiz-git release yolu (git'li derleme makinesi, ayrı onay).
 
 ## Bir dahaki sefere tuzaklar
 - `git status` pathspec'i CMake'in çalışma dizinine göredir; `-C` ile çalıştır.
