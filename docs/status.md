@@ -1,15 +1,18 @@
 # Durum
 
-Kapsadığı commit: PR #13 merge'ü (2026-10-06; taban 82e3ef8c). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline 82e3ef8c..HEAD -- . ':!docs/status.md'` PR #13 dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: `test/asyncsql-baseline` dalı (2026-10-06; taban ec55df6d). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline ec55df6d..HEAD -- . ':!docs/status.md'` bu daldan başka bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-DB yedeği (roadmap 1.6) test VM'de çalışıyor: saatlik şifreli döküm (cron), günlük çekme + geri yükleme testi (Windows Görev Zamanlayıcı `m2dev-backup-daily`), tatbikat oyunda doğrulandı (PR #13 merge) → `docs/backup.md`, `docs/worklog/2026-10-05-db-backup.md`. Sağlık kaydı (1.5 adım 1, PR #12) çalışıyor → `docs/monitoring.md`. Production ☐.
+DB standardı çalışması (plan: `docs/engineering/db-standard.md`). **Adım 1a bitti:** AsyncSQL baseline'ı, `tools/sql-reliability/` (12 senaryo, 10/10 deterministik) → `docs/worklog/2026-10-06-asyncsql-baseline.md`. Doğrulanan sorunlar (bugünkü kod): retry pratikte çalışmıyor ve kuyruk tıkanabiliyor; 1205/1213/2013 yazmaları kayboluyor; `CountQuery()` kopya kuyruğunu görmüyor ve takılı işler kapanışta kayboluyor; async yoldan sonuç döndüren ifade bağlantıyı bozuyor (bugün çağıran yok). DB yedeği (PR #13) ve sağlık kaydı (PR #12) test VM'de çalışıyor. Production ☐.
 
-## Sıradaki
-1. **Aria → InnoDB etki analizi** (yüksek risk: analiz → onay → kod). Gerekçe ölçüldü: yedek kilidi 3,5 milyon item'da 8 sn, Aria tablo kilidi, çöküşte Aria kaydı. Production'dan önce şart
-2. Yedeğin birkaç gün gözetimsiz çalışmasını `status-backup-hot` / `status-daily` ile izle
-3. Monitoring 2. adım (RAM/CPU, yedek durumu uyarısı, grafik → VM'e paket, ayrı onay); core dump + çökme uyarısı (1.7)
+## Sıradaki (her adım ayrı etki analizi + onay)
+1. **1b** MariaDB/OS toplayıcısı (ayrı süreç, sürüme dayanıklı) → `docs/engineering/db-step1-measurement.md`
+2. **1c** AsyncSQL/db gözlem sayaçları (metrics bileşeni seçenekleri karşılaştırılacak; davranış 1a ile aynı kalmalı)
+3. **AsyncSQL reliability fix** (1a testleri tersine dönmeli)
+4. **Şema yönetimi / migration standardı** (sürümlü migration, InnoDB kuralı)
+5. **InnoDB dönüşümü** (migration olarak; `INSERT DELAYED` kaldırma ile birlikte) → yük testiyle kabul
+Ayrı onay bekleyen: ticaret + geçici trigger testi (değer kaybı mı, dupe mı).
 
 ## Senden bekleyen kararlar
 - `heart_idle` gecikmede fazladan pulse sayıyor (teknik borç): yük testinden önce etki analizi yapılsın mı
