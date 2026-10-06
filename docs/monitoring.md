@@ -267,7 +267,26 @@ Panel, yönetim servisi ve teşhis yapan agent'lar bu kaynakları **olduğu gibi
   **beyandır** (binary'nin gömülü işareti), özgünlük kanıtı değildir; tam dosya kanıtı `deploy.log`'daki SHA-256
   (`docs/build-and-run.md` → "Kanıtın sınırı"). dbstat ayrı derlenir, henüz kimlik taşımaz.
 
-**Bilinen teşhis açıkları** (`docs/roadmap.md`): T-1 `syserr.log` yeniden başlatmada sıfırlanıyor; T-2 (1.9) derleme
+**Hata kaydı ve önceki çalışmalar (T-1).** Açılışta, `syserr` dosyası açılmadan önce, önceki çalışmanın boş olmayan
+`syserr.log`'u `log/syserr_YYYY-MM-DD_HH-MM-SS.log`'a taşınır (ad = dosyanın son yazma zamanı, yerel saat; ad doluysa `_2`, `_3`…)
+ve syslog'a `SYSERR_ARCHIVE: previous run moved to …` yazılır; `syserr.log` böylece sadece bu çalışmayı tutar
+(`server-src/src/libthecore/log.cpp`, `archive_previous_syserr`).
+- **Taşınamazsa hiçbir şey silinmez:** `log/` kullanılamıyor, ad bulunamıyor, taşıma ya da dosya bilgisi okunamıyorsa eski kayıt
+  `syserr.log`'da kalır, bu çalışma **sonuna eklenir** ve `syserr`'e tek bir `SYSERR_ARCHIVE: … appending` satırı düşer. Bu bir
+  hata/fallback durumudur; normal açılışta `syserr`'e satır eklenmez.
+- **Saklama:** süreç başına en yeni 30 arşiv (`SYSERR_KEEP_RUNS`); yalnız tam `syserr_<zaman>[_N].log` adlı normal dosyalar
+  silinir (`syserr.log`, `syslog_*`, `metrics_*`, `sql_*`, dizin ve symlink'lere dokunulmaz); silme hatası süreci durdurmaz,
+  `syserr`'e sayısı yazılır. 30 bugünkü sistem için başlangıç politikası, production standardı değil: çalışma **sayısını**
+  sınırlar, tek çalışma içindeki şişmeyi sınırlamaz (A-14); otomatik yeniden başlatma gelirse yeniden ölçülür.
+- **Diske yazma:** her `syserr` satırı log thread'inde yazıldıktan hemen sonra diske boşaltılır (`flush_on(err)`), böylece
+  süreç çökse de (SIGSEGV) önceden yazılmış satırlar kalır. **Sınır:** satırdan hemen sonra `abort()` eden yol (`CHECKPOINT`,
+  `libthecore/signal.cpp`) satırı hâlâ kaybedebilir (roadmap teknik borç).
+- **"End of pid"** = sürecin düzgün kapanış yolu tamamlandı. Yokluğu **kesin çökme sınıflandırması değildir**: "temiz kapanış
+  kanıtlanmadı" demektir (çökme, SIGKILL, host/elektrik kaybı ya da son satırın kaybı olabilir). **db bu satırı hiç yazmaz**
+  (log, `pid_deinit`'ten önce kapanıyor; roadmap teknik borç); db'nin düzgün kapanışı `log/sql_*`'deki `reason=final` satırlarıyla
+  görülür.
+
+**Bilinen teşhis açıkları** (`docs/roadmap.md`): T-1 `syserr.log` arşivi kodlandı, çalışan süreçlerde henüz doğrulanmadı; T-2 (1.9) derleme
 kimliği test VM'de çalışan süreçlerde doğrulandı, production temiz-git derleme yolu henüz yok; T-3 disk boş
 alanı ölçülmüyor; T-4 `service m2dev status` tek süreç canlıyken sağlıklı görünüyor.
 
@@ -288,7 +307,7 @@ dosyalar `0600 root`) **okuyamaz**. Root gerektirmeyen ortak salt-okuma grubu Fa
 | SQL kuyruğu mu? | `log/sql_*.log`: `kind=sum` (kuyruk, en eski bekleyen, takılma, hata/tekrar, db'de SAVE sonuçları), anormallikte `kind=conn` | `m2metrics.py --sql --hours 1`; "SQL (sql_*.log)" bölümü |
 | Yedek mi? | `status-backup-hot` (`lock_ms`, `duration_s`, zaman); dakika :17'de çalışır | `/var/backups/m2dev/status-*` (root) |
 | Son yedek/geri yükleme testi sağlam mı? | `status-backup-*`, `status-restore-test` (`result`, zaman → yaş), yedek makinesinde `status-pull`/`status-daily` | `docs/backup.md` |
-| Hata kaydı | `syserr.log` (sadece **son açılıştan beri**, T-1), `log/syslog_*.log` | süreç klasörü |
+| Hata kaydı | `syserr.log` (bu çalışma), `log/syserr_*.log` (önceki 30 çalışma, T-1 binary'lerinden itibaren), `log/syslog_*.log` | süreç klasörü |
 | Hangi binary? | Satırdaki `build=`; sürecin `version.txt`/`VERSION.txt`'i; kurulu dosya ↔ kimlik eşlemesi `/var/db/m2dev/deploy.log` ve `share/bin/BUILD` (SHA-256). Kimlikten önceki binary'lerde alan yok | `m2metrics.py` (süreç başına "build …") |
 
 Teşhis ayrımı: **game döngüsü** (bir çekirdekte `late_pulses` + yüksek `work_max_us`) · **işletim sistemi/VM** (gap büyük,

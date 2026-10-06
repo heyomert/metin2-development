@@ -51,7 +51,9 @@ service m2dev start
   çalıştırır, çünkü açılışta konsol SIGHUP'ı sunucuyu öldürüyordu (`docs/worklog/2026-10-04-vm-autostart-sighup.md`).
 - `/etc/rc.conf`: `m2dev_enable="YES"`, `m2dev_channels="1"`. Açılışta otomatik başlar (2026-10-04'te yeniden başlatmayla doğrulandı).
 - `start.py` çıktısı: `/var/log/m2dev.log`. Süreç PID'leri: `/usr/local/m2dev-acceptance/server/pids.json` (VM'de, `start.py` yazar).
-- Süreç log'ları: `channels/<süreç>/syserr.log`, `syslog.log`. **`syserr.log` her açılışta sıfırlanır.**
+- Süreç log'ları: `channels/<süreç>/syserr.log` (sadece bu çalışma), önceki çalışmalar `log/syserr_<son yazma>.log` (son 30;
+  `docs/monitoring.md` → "Hata kaydı ve önceki çalışmalar"), `syslog.log`. T-1'den önce derlenmiş binary'lerde `syserr.log` her
+  açılışta **sıfırlanır**; kapanma kanıtı gerekiyorsa yeniden başlatmadan önce kopyala.
 - Durdurmadan önce oyunda kimse olmadığını kontrol et:
   `sockstat -4c | grep -E ":(1101[1-3]|11991|11000) " | grep -v 127.0.0.1`
 
