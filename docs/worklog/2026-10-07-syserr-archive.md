@@ -4,7 +4,7 @@
 - **Tür:** özellik / karar
 - **Alan:** server-src / runtime / tools
 - **Durum:** Aktif
-- **PR / commit:** (PR eklenecek)
+- **PR / commit:** [#21](https://github.com/heyomert/metin2-development/pull/21)
 
 ## Problem / hedef
 `syserr.log` her açılışta sıfırlanarak açılıyordu (`libthecore/log.cpp`, `basic_file_sink_mt("syserr.log", true)`): çöküp ya da
