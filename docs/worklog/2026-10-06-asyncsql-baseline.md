@@ -4,7 +4,7 @@
 - **Tür:** karar / ortam (test aracı + analiz)
 - **Alan:** server-src (libsql, sadece okuma) / tools / docs
 - **Durum:** Aktif
-- **PR / commit:** —
+- **PR / commit:** [#14](https://github.com/heyomert/metin2-development/pull/14)
 
 ## Problem / hedef
 Aria → InnoDB dönüşümünden ve AsyncSQL düzeltmesinden önce bugünkü `libsql/AsyncSQL` davranışını **kanıtla** kaydetmek;

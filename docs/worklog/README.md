@@ -24,6 +24,6 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-05 | [Zemin dokuları bulanıktı: DX9 geçişinde anizotropi ayarı kaybolmuş](2026-10-05-anisotropic-filtering.md) | düzeltme | client-src | Aktif | #11 |
 | 2026-10-05 | [Sunucu sağlık kaydı (metrics); VM askıya alınınca Aria kaydı bozuldu](2026-10-05-server-metrics.md) | özellik / karar / ortam | server-src / runtime | Aktif | #12 |
 | 2026-10-05 | [DB yedeği: mantıksal döküm, şifreli, dışarıdan çekme, geri yükleme testi; `mariadb-backup` Aria'da geri yüklenemedi](2026-10-05-db-backup.md) | özellik / karar / ortam | runtime / db | Aktif | #13 |
-| 2026-10-06 | [AsyncSQL davranış baseline'ı: hata enjeksiyonu testleri (DB adım 1a)](2026-10-06-asyncsql-baseline.md) | karar / ortam | server-src / tools | Aktif | — |
+| 2026-10-06 | [AsyncSQL davranış baseline'ı: hata enjeksiyonu testleri (DB adım 1a)](2026-10-06-asyncsql-baseline.md) | karar / ortam | server-src / tools | Aktif | #14 |
 
 <!-- Eski yıllar: README-<yıl>.md -->

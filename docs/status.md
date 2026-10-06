@@ -1,10 +1,10 @@
 # Durum
 
-Kapsadığı commit: `test/asyncsql-baseline` dalı (2026-10-06; taban ec55df6d). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline ec55df6d..HEAD -- . ':!docs/status.md'` bu daldan başka bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: PR #14 merge'ü (2026-10-06; taban ec55df6d). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline ec55df6d..HEAD -- . ':!docs/status.md'` PR #14 dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-DB standardı çalışması (plan: `docs/engineering/db-standard.md`). **Adım 1a bitti:** AsyncSQL baseline'ı, `tools/sql-reliability/` (12 senaryo, 10/10 deterministik) → `docs/worklog/2026-10-06-asyncsql-baseline.md`. Doğrulanan sorunlar (bugünkü kod): retry pratikte çalışmıyor ve kuyruk tıkanabiliyor; 1205/1213/2013 yazmaları kayboluyor; `CountQuery()` kopya kuyruğunu görmüyor ve takılı işler kapanışta kayboluyor; async yoldan sonuç döndüren ifade bağlantıyı bozuyor (bugün çağıran yok). DB yedeği (PR #13) ve sağlık kaydı (PR #12) test VM'de çalışıyor. Production ☐.
+DB standardı çalışması (plan: `docs/engineering/db-standard.md`). **Adım 1a bitti (PR #14 merge):** AsyncSQL baseline'ı, `tools/sql-reliability/` (12 senaryo, 10/10 deterministik) → `docs/worklog/2026-10-06-asyncsql-baseline.md`. Doğrulanan sorunlar (bugünkü kod): retry pratikte çalışmıyor ve kuyruk tıkanabiliyor; 1205/1213/2013 yazmaları kayboluyor; `CountQuery()` kopya kuyruğunu görmüyor ve takılı işler kapanışta kayboluyor; async yoldan sonuç döndüren ifade bağlantıyı bozuyor (bugün çağıran yok). DB yedeği (PR #13) ve sağlık kaydı (PR #12) test VM'de çalışıyor. Production ☐.
 
 ## Sıradaki (her adım ayrı etki analizi + onay)
 1. **1b** MariaDB/OS toplayıcısı (ayrı süreç, sürüme dayanıklı) → `docs/engineering/db-step1-measurement.md`
