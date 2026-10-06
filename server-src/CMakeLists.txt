@@ -45,33 +45,20 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# Derive a version string from git for the db target
-find_package(Git QUIET)
-if(GIT_FOUND)
-	execute_process(
-		COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_SOURCE_DIR} describe --always --dirty --tags
-		OUTPUT_VARIABLE GIT_DESCRIBE_VERSION
-		OUTPUT_STRIP_TRAILING_WHITESPACE
-		ERROR_QUIET
-	)
-endif()
-
-if(NOT GIT_DESCRIBE_VERSION)
-	if(GIT_FOUND)
-		execute_process(
-			COMMAND ${GIT_EXECUTABLE} -C ${CMAKE_SOURCE_DIR} rev-parse --short HEAD
-			OUTPUT_VARIABLE GIT_DESCRIBE_VERSION
-			OUTPUT_STRIP_TRAILING_WHITESPACE
-			ERROR_QUIET
-		)
-	else()
-		set(GIT_DESCRIBE_VERSION "unknown")
-	endif()
-endif()
-
-if(NOT GIT_DESCRIBE_VERSION)
-	set(GIT_DESCRIBE_VERSION "unknown")
-endif()
+# Build identity (cmake/BuildIdentity.cmake): computed at every build, not at configure time, so it always describes
+# the source actually compiled. Only game/db version.cpp include the generated header. M2_BUILD_COMMIT/M2_BUILD_DIRTY
+# inject an identity for builds with neither git nor an exported SOURCE_COMMIT (development only).
+set(M2_BUILD_COMMIT "" CACHE STRING "Injected source commit (40 hex) when the source has no git and no SOURCE_COMMIT")
+set(M2_BUILD_DIRTY "" CACHE STRING "Injected dirty flag (0 or 1) for M2_BUILD_COMMIT")
+set(M2_BUILD_IDENTITY_DIR ${CMAKE_BINARY_DIR}/generated)
+add_custom_target(m2_build_identity ALL
+	COMMAND ${CMAKE_COMMAND} -DSRC_DIR=${CMAKE_SOURCE_DIR} -DBIN_DIR=${CMAKE_BINARY_DIR}
+		-DOUT=${M2_BUILD_IDENTITY_DIR}/m2_build_identity.h
+		-DM2_BUILD_COMMIT=${M2_BUILD_COMMIT} -DM2_BUILD_DIRTY=${M2_BUILD_DIRTY}
+		-P ${CMAKE_SOURCE_DIR}/cmake/BuildIdentity.cmake
+	BYPRODUCTS ${M2_BUILD_IDENTITY_DIR}/m2_build_identity.h
+	COMMENT "M2 build identity"
+	VERBATIM)
 
 # ASan flags
 if(ENABLE_ASAN)

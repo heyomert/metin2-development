@@ -7,6 +7,7 @@
 #include "db.h"
 #include "log.h"
 #include "sql_metrics.h"
+#include "common/build_identity.h"
 
 #include <cstdio>
 
@@ -267,7 +268,7 @@ void CServerMetrics::Emit(Clock::time_point now)
 		" iters=%llu pulses=%llu late_pulses=%llu late_iters=%llu max_late_pulses=%llu"
 		" work_us=%lld work_max_us=%lld iter_gap_max_us=%lld busy_pct=%.2f"
 		" event_us=%lld hb_us=%lld chr_us=%lld io_us=%lld other_us=%lld"
-		" events=%llu sent_bytes=%llu metrics_dropped=%llu metrics_write_errors=%llu",
+		" events=%llu sent_bytes=%llu metrics_dropped=%llu metrics_write_errors=%llu%s",
 		host, (unsigned) g_bChannel, (unsigned) mother_port, CurrentProcessId(),
 		(long long) std::chrono::duration_cast<std::chrono::seconds>(now - m_startTime).count(), windowUs / 1000,
 		(unsigned) DESC_MANAGER::instance().GetLocalUserCount(), DESC_MANAGER::instance().GetClientSet().size(),
@@ -279,7 +280,7 @@ void CServerMetrics::Emit(Clock::time_point now)
 		ToMicroseconds(m_event), ToMicroseconds(m_heartbeat), ToMicroseconds(m_character),
 		ToMicroseconds(m_io), ToMicroseconds(other),
 		(unsigned long long) m_events, (unsigned long long) m_sentBytes,
-		m_writer.Dropped(), m_writer.WriteErrors());
+		m_writer.Dropped(), m_writer.WriteErrors(), M2BuildFields());
 
 	ResetWindow(now);
 

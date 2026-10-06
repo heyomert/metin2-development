@@ -1,6 +1,7 @@
 #pragma once
 
 #include "metrics_writer.h"
+#include "build_identity.h"
 #include "libsql/AsyncSQL.h"
 
 #include <chrono>
@@ -129,9 +130,9 @@ public:
 		len = AppendErrno(line, sizeof(line), len, sum.errnoCount, "");
 		len = Append(line, sizeof(line), len,
 			" exec_n=%llu exec_us=%llu exec_max_us=%llu direct_n=%llu direct_err=%llu direct_max_ms=%llu%s"
-			" metrics_dropped=%llu metrics_write_errors=%llu",
+			" metrics_dropped=%llu metrics_write_errors=%llu%s",
 			U(sum.execN), U(sum.execUs), U(sum.execMaxUs), U(sum.directN), U(sum.directErr), U(sum.directMaxMs),
-			extraSum ? extraSum : "", out.Dropped(), out.WriteErrors());
+			extraSum ? extraSum : "", out.Dropped(), out.WriteErrors(), M2BuildFields());
 		out.Write(line, len);
 
 		m_windowStart = now;
