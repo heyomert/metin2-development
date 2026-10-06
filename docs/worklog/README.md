@@ -25,5 +25,6 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-05 | [Sunucu sağlık kaydı (metrics); VM askıya alınınca Aria kaydı bozuldu](2026-10-05-server-metrics.md) | özellik / karar / ortam | server-src / runtime | Aktif | #12 |
 | 2026-10-05 | [DB yedeği: mantıksal döküm, şifreli, dışarıdan çekme, geri yükleme testi; `mariadb-backup` Aria'da geri yüklenemedi](2026-10-05-db-backup.md) | özellik / karar / ortam | runtime / db | Aktif | #13 |
 | 2026-10-06 | [AsyncSQL davranış baseline'ı: hata enjeksiyonu testleri (DB adım 1a)](2026-10-06-asyncsql-baseline.md) | karar / ortam | server-src / tools | Aktif | #14 |
+| 2026-10-06 | [MariaDB + OS toplayıcısı `m2dev-dbstat` (DB adım 1b); süreç CPU'su ms'ye kesilince kayboluyordu](2026-10-06-dbstat-collector.md) | özellik / karar / ortam | runtime / tools | Aktif | #15 |
 
 <!-- Eski yıllar: README-<yıl>.md -->

@@ -120,3 +120,50 @@ sistem çağrısı gerektirmez, maliyetin yüzlerce kat düşük olması bekleni
 - Kapanışta son kısmi pencere yazılır, kuyruk boşaltılır (`destroy()` → `thecore_destroy` öncesi).
 - Test: `tools/metrics/sink-test.cpp` (sink + havuz, oyun gerekmez; 8 senaryo: normal yazma, kuyruk doygunluğu,
   dizin/dosya yolu hatası, saklama, gece yarısı, sinyaller, disk dolması).
+
+# MariaDB / OS (dbstat)
+
+Ayrı, salt okunur bir toplayıcı: `deploy/freebsd/metrics/m2dev-dbstat/` (tasarım ve ölçümler:
+`docs/engineering/db-step1b-collector.md`). game, db ve MariaDB ona bağımlı değil; durursa sadece bu satırlar durur.
+Dosya: `/var/log/m2dev-metrics/dbstat_YYYY-MM-DD.log`, 14 gün. Aralık 10 sn. Satır başı yukarıdakiyle aynı biçim,
+`schema=1 src=dbstat kind=db|os|proc`. Alanlar adıyla okunur; yeni alan eklenebilir, anlam değişirse `schema` artar.
+
+**Değer türleri:** **Δ** = önceki başarılı örnekten bu yana fark; **anlık** = örnek anı. Özel değerler: `NA` = bu
+MariaDB/FreeBSD sürümünde yok (toplayıcı çalışmaya devam eder, `na` sayısı artar); `-` = bu pencerede güvenilir Δ yok
+(ilk örnek, yeniden başlatma, sayaç geri gitti). Ham sayaç yazılmaz.
+
+**`kind=db`:** `up` (0 ise sadece `err=connect|auth|gone|lost|other` ve `retry_in_s`), `version`, `long_query_time_s`,
+`uptime_s`, `window_s` (Uptime farkı), `first` (toplayıcının ilk örneği), `restart` (Uptime geri gitti → MariaDB yeniden
+başladı, bütün Δ `-`), `reset` (yeniden başlatma olmadan geri giden sayaç sayısı; o alan `-`), `na`, `write_errors`
+(toplayıcı başından beri yazılamayan satır).
+| Alan | Tür | MariaDB | Not |
+|---|---|---|---|
+| `questions`, `com_select/insert/update/replace/delete` | Δ | `Questions`, `Com_*` | `INSERT ... SELECT` `com_insert`'e girmez (`Com_insert_select`) |
+| `row_lock_waits`, `row_lock_time_ms` | Δ | `Innodb_row_lock_waits/time` | InnoDB satır kilidi bekleme sayısı ve toplam süresi (ms) |
+| `row_lock_current_waits` | anlık | `Innodb_row_lock_current_waits` | |
+| `deadlocks` | Δ | `Innodb_deadlocks` | |
+| `table_locks_waited`, `table_locks_immediate` | Δ | `Table_locks_*` | Aria/MyISAM tablo kilidi. **Sadece sayı; süre yok** — buradan süre/performans türetilmez (süre: istemci tarafı 1c). Tablo sonuna `INSERT` okuma sırasında beklemez (concurrent insert), sayılmaz |
+| `innodb_fsyncs`, `innodb_log_bytes`, `aria_log_syncs` | Δ | `Innodb_data_fsyncs`, `Innodb_os_log_written`, `Aria_transaction_log_syncs` | motor başına disk senkron maliyeti |
+| `bp_read_requests`, `bp_reads` / `aria_cache_read_requests`, `aria_cache_reads` | Δ | buffer pool / Aria pagecache | önbellek isabeti = 1 − reads/requests |
+| `history_list_length`, `bp_dirty_pages` | anlık | `Innodb_*` | |
+| `threads_running`, `threads_connected` | anlık | `Threads_*` | toplayıcının kendi bağlantısı ve sorgusu dahil |
+| `aborted_clients`, `aborted_connects`, `conn_errors_max` | Δ | `Aborted_*`, `Connection_errors_max_connections` | |
+| `slow_queries` | Δ | `Slow_queries` | sadece `long_query_time_s` üstü; **0 "yavaş sorgu yok" demek değildir** (bugün eşik 10 sn) |
+
+**`kind=os`:** `load1`, `mem_free_mb`, `swap_used_mb` (anlık); `disk` (MariaDB datadir'inin diski, otomatik; ZFS'te
+`--disk`) ve pencere ortalaması `r_s w_s mb_r_s mb_w_s ms_r ms_w qlen busy_pct` (devstat; ilk pencere `-`).
+
+**`kind=proc`:** her izlenen süreç için `name` (argv[0]: `mariadbd`, `db`, `game_auth`, `channelN_coreM`,
+`m2dev-dbstat`), `pid`, `first` (pid ilk kez görüldü: başlangıç ya da yeniden başlatma), `restart` (aynı pid, çalışma
+süresi geri gitti), `cpu_us` (Δ user+sys, µs), `rss_kb`. game sağlık kaydıyla `pid` + zaman üzerinden birleştirilir.
+
+**Erişim ve arıza:** MariaDB'ye unix socket, `USAGE` yetkili kullanıcı (yazamaz, veri okuyamaz, başkalarının
+sorgularını göremez); sadece `SHOW GLOBAL STATUS WHERE Variable_name IN (...)` ve bağlanınca/10 dk'da bir
+`SELECT VERSION(), @@long_query_time, @@datadir`. Bağlantı yoksa yeniden deneme aralığı 10 → 20 → 40 → 60 sn (en fazla).
+Çökerse servis en erken 30 sn sonra yeniden başlatır. Disk dolarsa satır atılır, `write_errors` artar.
+
+**Okuma:** `python3 tools/metrics/m2metrics.py --dbstat /var/log/m2dev-metrics --hours 24` (özet: sorgu hızı, kilit
+beklemeleri, senkron, önbellek isabeti, OS, süreç başına CPU/RSS); `--raw` satırları aynen basar.
+
+**Maliyet (test VM'de ölçüldü):** toplayıcı 0,65–1,14 ms CPU/örnek (iki koşu; 10 sn aralıkta ≤ %0,012 çekirdek), RSS ~10,7 MB sabit;
+MariaDB tarafı ~0,45 ms/okuma; çıktı ~18 MB/gün. Toplayıcı kendi maliyetini `name=m2dev-dbstat` satırında raporlar.
