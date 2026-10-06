@@ -2,12 +2,18 @@
 // can be checked against the same scenarios. Runs only against a temporary MariaDB started by run.sh (never the live
 // server). One scenario per process: fresh schema, fresh CAsyncSQL, fresh syserr.log in the working directory.
 //
-//   sqlrt <S1..S11|S9b|versions>      environment (set by run.sh): RT_PORT, RT_PW (TCP user rt), RT_SOCK (admin
+//   sqlrt <S1..S12|S9b|versions>      environment (set by run.sh): RT_PORT, RT_PW (TCP user rt), RT_SOCK (admin
 //                                     socket, root), RT_TOKEN (per-run token; see guard(): refuses any other server)
 //
 // Evidence used, in this order: rows in the database (was a statement really applied?), the client's own syserr.log
 // lines ("AsyncSQL: query failed ... errno: N", "AsyncSQL: retrying"), queue counters. The copy queue is read only
 // after a quiet period, when the worker is waiting on its condition variable (the worker owns it without a lock).
+//
+// Every report is followed by a "stats" line: CAsyncSQL::CollectStats() (DB step 1c telemetry) next to the same
+// evidence, so the counters can be checked against what really happened. Only deterministic values are printed there
+// (counts and 0/1 flags; no durations, and no exec count: how many queries the worker finishes before Quit() and
+// how many the untimed shutdown loop runs depends on thread timing, 1c S9b), so runs stay comparable. Drop the
+// "stats" lines to compare with output from before 1c.
 #include "libsql/AsyncSQL.h"
 
 #include <chrono>
@@ -201,11 +207,33 @@ namespace
 			die("guard: AsyncSQL connection is not on the temporary server", nullptr);
 	}
 
+	void stats(const char* phase, Probe& sql)
+	{
+		SQLStats s;
+		sql.CollectStats(s);
+		const auto u = [](uint64_t v) { return (unsigned long long) v; };
+		uint64_t buckets = 0;
+		for (uint64_t e : s.errnoCount)
+			buckets += e;
+		// q/cq cross-checks against the legacy view are valid because reports run in quiet periods only
+		printf("%s stats phase=%s q=%llu cq=%llu rq=%llu oldest=%d stuck=%d worker=%d pushed=%llu ok=%llu err=%llu"
+			" retry=%llu reconnect_seen=%llu e2006=%llu e2013=%llu e2014=%llu e1205=%llu e1213=%llu e_other=%llu"
+			" exec_n_le_ok=%d unexecuted_at_quit=%llu q_matches=%d cq_matches=%d buckets_eq_err_plus_retry=%d\n",
+			g_scn, phase, u(s.queued), u(s.copied), u(s.results), s.oldestAgeMs > 0 ? 1 : 0, s.stuckMs > 0 ? 1 : 0,
+			s.workerRunning ? 1 : 0, u(s.pushed), u(s.ok), u(s.err), u(s.retry), u(s.reconnectSeen),
+			u(s.errnoCount[SQL_ERRNO_2006]), u(s.errnoCount[SQL_ERRNO_2013]), u(s.errnoCount[SQL_ERRNO_2014]),
+			u(s.errnoCount[SQL_ERRNO_1205]), u(s.errnoCount[SQL_ERRNO_1213]), u(s.errnoCount[SQL_ERRNO_OTHER]),
+			s.execCount <= s.ok + s.err ? 1 : 0, u(s.unexecutedAtQuit), s.queued == sql.CountQuery() ? 1 : 0, s.copied == sql.CopySize() ? 1 : 0,
+			buckets == s.err + s.retry ? 1 : 0);
+		fflush(stdout);
+	}
+
 	void report(const char* phase, Probe& sql, const std::string& extra)
 	{
 		printf("%s phase=%s q=%u cq=%zu finished=%d %s %s\n", g_scn, phase, (unsigned) sql.CountQuery(), sql.CopySize(),
 			sql.CountQueryFinished(), extra.c_str(), errnos().c_str());
 		fflush(stdout);
+		stats(phase, sql);
 	}
 
 	std::string kv(const char* k, long long v)
@@ -388,6 +416,7 @@ namespace
 		sql.Quit();
 		ms(1500);
 		printf("%s phase=after_quit markers=%lld %s\n", g_scn, markers("s9-"), errnos().c_str());
+		stats("after_quit", sql);
 	}
 
 	// S9b: shutdown with a normal backlog (no errors)
@@ -399,6 +428,28 @@ namespace
 			push_marker(sql, "s9b-" + std::to_string(i));
 		sql.Quit();
 		printf("%s phase=after_quit markers=%lld %s\n", g_scn, markers("s9b-"), errnos().c_str());
+		stats("after_quit", sql);
+	}
+
+	// S12: a ReturnQuery fails with an error in the retry list, then succeeds on a later attempt. What does the caller
+	// see in the result? (db reads uiSQLErrno for QID_LOGIN_BY_KEY, db/ClientManagerLogin.cpp)
+	void S12()
+	{
+		Probe sql;
+		start(sql);
+		sql.ReturnQuery(SETPW, nullptr);
+		ms(1500);
+		report("failing", sql, kv("applied", ghost_password_set()));
+		must(g_admin, "CREATE USER ghost@localhost");
+		push_marker(sql, "s12-after"); // wakes the worker: the stuck statement is attempted again and now succeeds
+		ms(1500);
+		report("retried", sql, kv("applied", ghost_password_set()) + kv("marker", marker("s12-after")));
+		std::unique_ptr<SQLMsg> res;
+		const bool got = sql.PopResult(res);
+		printf("%s phase=result popped=%d uiSQLErrno=%u uiFinalErrno=%u applied=%lld\n", g_scn, got ? 1 : 0,
+			got ? res->uiSQLErrno : 0, got ? res->uiFinalErrno : 0, ghost_password_set());
+		stats("result_popped", sql);
+		sql.Quit();
 	}
 
 	// S11: a result-returning statement sent through AsyncQuery (no Store()), then writes. Found in run 1 (S2 with
@@ -473,7 +524,7 @@ int main(int argc, char** argv)
 {
 	if (argc < 2)
 	{
-		fprintf(stderr, "usage: %s <S1..S11|S9b|versions>\n", argv[0]);
+		fprintf(stderr, "usage: %s <S1..S12|S9b|versions>\n", argv[0]);
 		return 2;
 	}
 	g_scn = argv[1];
@@ -501,6 +552,7 @@ int main(int argc, char** argv)
 	else if (!strcmp(g_scn, "S9b")) S9b();
 	else if (!strcmp(g_scn, "S10")) S10();
 	else if (!strcmp(g_scn, "S11")) S11();
+	else if (!strcmp(g_scn, "S12")) S12();
 	else
 		die("unknown scenario", nullptr);
 

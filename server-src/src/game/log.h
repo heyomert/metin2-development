@@ -51,6 +51,9 @@ class LogManager : public singleton<LogManager>
 		void		DetailLoginLog(bool isLogin, LPCHARACTER ch);
 		void		DragonSlayLog(DWORD dwGuildID, DWORD dwDragonVnum, DWORD dwStartTime, DWORD dwEndTime);
 
+		// Telemetry only (CServerMetrics)
+		CAsyncSQL*	GetSQLForStats()	{ return &m_sql; }
+
 	private:
 		void		Query(const char * c_pszFormat, ...);
 

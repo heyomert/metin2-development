@@ -86,7 +86,7 @@ typedef struct _SQLMsg
 {
 	_SQLMsg() noexcept
 		: m_pkSQL(nullptr), iID(0), uiResultPos(0), pvUserData(nullptr),
-		bReturn(false), uiSQLErrno(0)
+		bReturn(false), uiSQLErrno(0), uiFinalErrno(0), llEnqueueMs(0)
 	{
 	}
 
@@ -150,8 +150,53 @@ typedef struct _SQLMsg
 	unsigned int						uiResultPos;
 	void*								pvUserData;
 	bool								bReturn;
-	unsigned int						uiSQLErrno;
+	unsigned int						uiSQLErrno;		// last failed attempt; not cleared when a retry succeeds
+	unsigned int						uiFinalErrno;	// attempt that completed the message: 0 = executed without error
+	int64_t								llEnqueueMs;	// SQLStatsClock at queueing (telemetry only)
 } SQLMsg;
+
+// Telemetry for one CAsyncSQL (docs/monitoring.md -> "SQL (sql_*.log)"). Counters are cumulative since construction
+// and only ever grow; snapshot fields describe the moment of collection. Nothing here changes how queries run.
+enum ESQLErrnoBucket
+{
+	SQL_ERRNO_2006,		// CR_SERVER_GONE_ERROR
+	SQL_ERRNO_2013,		// CR_SERVER_LOST
+	SQL_ERRNO_2014,		// CR_COMMANDS_OUT_OF_SYNC
+	SQL_ERRNO_1205,		// ER_LOCK_WAIT_TIMEOUT
+	SQL_ERRNO_1213,		// ER_LOCK_DEADLOCK
+	SQL_ERRNO_OTHER,
+	SQL_ERRNO_BUCKET_MAX,
+};
+
+struct SQLStats
+{
+	bool		configured = false;		// Setup() was called (a connection this process actually uses)
+	bool		threaded = false;		// has a worker thread (AsyncQuery/ReturnQuery); false = DirectQuery only
+	bool		workerRunning = false;	// worker thread is inside its loop (false if its first connect failed)
+
+	// cumulative
+	uint64_t	pushed = 0;				// queued by AsyncQuery/ReturnQuery
+	uint64_t	ok = 0;					// completed, last attempt without error
+	uint64_t	err = 0;				// completed, last attempt failed: that statement was not applied
+	uint64_t	retry = 0;				// failed attempts that left the message queued for another attempt
+	uint64_t	reconnectSeen = 0;		// connection thread id differed before a query (reconnect noticed, not when it happened)
+	uint64_t	errnoCount[SQL_ERRNO_BUCKET_MAX] = {};	// failed attempts by error code; sum = err + retry
+	uint64_t	execCount = 0;			// completed messages with a timed last attempt
+	uint64_t	execUsTotal = 0;		// threaded: steady_clock us; direct: SQLStatsClock ms * 1000 (coarse)
+	uint64_t	execUsMax = 0;			// largest single last attempt since the previous CollectStats()
+
+	// snapshot
+	uint64_t	queued = 0;				// main queue
+	uint64_t	copied = 0;				// worker's copy queue (includes a stuck head)
+	uint64_t	results = 0;			// result queue (ReturnQuery results not popped yet)
+	int64_t		oldestAgeMs = 0;		// age of the oldest message not completed yet (0 = none)
+	int64_t		stuckMs = 0;			// head message failing and waiting for another attempt (0 = not stuck)
+	uint64_t	unexecutedAtQuit = 0;	// left in the copy queue when the worker stopped (never executed)
+};
+
+// Cheap monotonic milliseconds for telemetry timestamps (FreeBSD CLOCK_MONOTONIC_FAST, Linux CLOCK_MONOTONIC_COARSE;
+// a few ms of granularity). Never 0 after start-up, so 0 can mean "none".
+int64_t SQLStatsClock();
 
 class CAsyncSQL
 {
@@ -191,7 +236,14 @@ class CAsyncSQL
 
 		size_t EscapeString(char* dst, size_t dstSize, const char* src, size_t srcSize);
 
+		// Telemetry snapshot. Single collector: it also restarts the execUsMax window. Lock-free; may be called
+		// from any thread, values are read one by one (not one consistent group).
+		void CollectStats(SQLStats& out);
+
 	protected:
+		void NoteAttemptFailed(unsigned int uiErrno);
+		void NoteCompleted(SQLMsg* p, bool bFailed, uint64_t ullExecUs);
+		void NoteThreadIdSeen();
 		void Destroy();
 		void PushQuery(std::unique_ptr<SQLMsg> p);
 		bool PeekQuery(SQLMsg** pp);
@@ -236,6 +288,29 @@ class CAsyncSQL
 		std::atomic<int> m_iQueryFinished;
 		std::atomic<int> m_iCopiedQuery;
 		std::atomic<unsigned long> m_ulThreadID;
+
+		// Telemetry (relaxed atomics; never read by query handling)
+		std::atomic<bool> m_bConfigured;
+		bool m_bThreaded;
+		std::atomic<bool> m_bWorkerRunning;
+		std::atomic<uint64_t> m_ullPushed;
+		std::atomic<uint64_t> m_ullTaken;		// moved from the main queue to the copy queue
+		std::atomic<uint64_t> m_ullCopyDone;	// completed from the copy queue (normal loop)
+		std::atomic<uint64_t> m_ullMainDone;	// completed straight from the main queue (shutdown loop)
+		std::atomic<uint64_t> m_ullOk;
+		std::atomic<uint64_t> m_ullErr;
+		std::atomic<uint64_t> m_ullRetry;
+		std::atomic<uint64_t> m_ullReconnectSeen;
+		std::atomic<uint64_t> m_ullResultPushed;
+		std::atomic<uint64_t> m_ullResultPopped;
+		std::atomic<uint64_t> m_aullErrno[SQL_ERRNO_BUCKET_MAX];
+		std::atomic<uint64_t> m_ullExecCount;
+		std::atomic<uint64_t> m_ullExecUsTotal;
+		std::atomic<uint64_t> m_ullExecUsMax;
+		std::atomic<int64_t> m_llMainHeadMs;	// enqueue time of the main queue's head (0 = empty)
+		std::atomic<int64_t> m_llCopyHeadMs;	// enqueue time of the copy queue's head (0 = empty)
+		std::atomic<int64_t> m_llStuckSinceMs;
+		std::atomic<uint64_t> m_ullUnexecutedAtQuit;
 };
 
 class CAsyncSQL2 : public CAsyncSQL

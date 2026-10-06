@@ -1,20 +1,18 @@
 #pragma once
 
+#include "metrics_writer.h"
+
 #include <chrono>
 #include <cstdint>
 #include <memory>
 
-namespace spdlog
-{
-	class async_logger;
-	namespace details { class thread_pool; }
-}
-
-class metrics_daily_sink;
+// Not included here: sql_metrics.h pulls libsql/AsyncSQL.h, whose QUERY_MAX_LEN macro breaks common/length.h when
+// it comes first in a translation unit
+class sql_metrics_reporter;
 
 // Periodic server health line (docs/monitoring.md). Accumulators are touched only by the game thread; writing
-// happens on a private spdlog worker with discard_new, so a metrics problem drops lines instead of stalling the
-// game loop, and the global syslog/syserr pool is never shared.
+// happens on this stream's own spdlog worker with discard_new (metrics_writer), so a metrics problem drops lines
+// instead of stalling the game loop, and neither the global syslog/syserr pool nor another stream is shared.
 class CServerMetrics : public singleton<CServerMetrics>
 {
 	public:
@@ -44,13 +42,18 @@ class CServerMetrics : public singleton<CServerMetrics>
 		void	ResetWindow(Clock::time_point now);
 		void	AddBytesWritten(int iCurrentBytesWritten);
 		void	Emit(Clock::time_point now);
+		void	StartSql(Clock::time_point now);
+		void	EmitSql(Clock::time_point now, bool bFinal);
 
 	private:
 		bool	m_bEnabled;
 
-		std::shared_ptr<spdlog::details::thread_pool>	m_pool;
-		std::shared_ptr<metrics_daily_sink>				m_sink;
-		std::shared_ptr<spdlog::async_logger>			m_logger;
+		metrics_writer	m_writer;
+
+		// SQL telemetry (log/sql_YYYY-MM-DD.log): a separate stream with its own queue and worker, measured in the
+		// same window as the health line
+		metrics_writer							m_sqlWriter;
+		std::unique_ptr<sql_metrics_reporter>	m_sql;
 
 		Clock::time_point	m_startTime;
 		Clock::time_point	m_windowStart;

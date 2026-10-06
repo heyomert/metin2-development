@@ -17,6 +17,7 @@
 #include "Marriage.h"
 #include "ItemIDRangeManager.h"
 #include "Cache.h"
+#include "DBMetrics.h"
 
 #include <memory>
 
@@ -2486,6 +2487,9 @@ int CClientManager::AnalyzeQueryResult(SQLMsg * msg)
 	CQueryInfo * qi = (CQueryInfo *) msg->pvUserData;
 	CPeer * peer = GetPeer(qi->dwIdent);
 
+	// Telemetry before any early return: cache-flush saves use ident 0 and never find a peer below
+	CDBMetrics::instance().NoteResult(qi->iType, msg->uiFinalErrno);
+
 #ifdef _TEST
 	if (qi->iType != QID_ITEM_AWARD_LOAD)
 	sys_log(0, "AnalyzeQueryResult %d", qi->iType);
@@ -2710,6 +2714,8 @@ int CClientManager::Process()
 
 		if (!(thecore_heart->pulse % (thecore_heart->passes_per_sec * 10)))
 		{
+			CDBMetrics::instance().Window();
+
 			/*
 			char buf[4096 + 1];
 			int len
