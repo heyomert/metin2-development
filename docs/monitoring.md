@@ -244,13 +244,14 @@ Panel, yönetim servisi ve teşhis yapan agent'lar bu kaynakları **olduğu gibi
   okunur, sırayla değil. Yeni alan eklenebilir; bir alanın anlamı ya da biçimi değişirse `schema` artar.
 - **UTC farkının iki yazımı:** kaynaklar aynı farkı iki biçimde yazar ve okuyucular **ikisini de** kabul etmelidir
   (2026-10-06'da gerçek dosyalarda doğrulandı; başka biçim görülmedi):
-  - `+03:00` — spdlog desenindeki `%z`: game sağlık satırı (`metrics_*.log`; `game/server_metrics.cpp`).
+  - `+03:00` — spdlog desenindeki `%z`: game sağlık satırı ve SQL satırları (`metrics_*.log`, `sql_*.log`;
+    `common/metrics_writer.h`).
   - `+0300` — C `strftime`/`date` `%z`: dbstat satırı ve `time=` alanı olan durum dosyaları (`status-backup-*`,
     `status-restore-test`, yedek makinesinin `status-pull`/`status-daily`'si).
   Aynı anı gösterirler; Python `datetime.strptime(..., "%Y-%m-%dT%H:%M:%S%z")` ikisini de ayrıştırır (`m2metrics.py`).
   Biçimleri eşitlemek için çalışan kod değiştirilmez.
 - **Kaynak:** `src=` alanı ya da dosya öneki (`metrics_` game sağlık satırı — `src` alanı yok, dosya önekinden anlaşılır;
-  `dbstat_`; `status-*` yedek/restore-test). Süreç başına dosyalar sürecin `log/` klasöründe, günlük, 14 gün.
+  `sql_` (`src=sql`); `dbstat_`; `status-*` yedek/restore-test). Süreç başına dosyalar sürecin `log/` klasöründe, günlük, 14 gün.
 - **Değer türleri:** Δ (pencere farkı), kümülatif toplam (`*_total`, süreç başından beri) ve anlık ayrı adlandırılır ya da
   tabloda belirtilir. `NA` = bu sürümde yok, `-` = bu pencerede güvenilir fark yok. Yeniden başlatma `pid` değişimi ya da
   `restart=1` ile görünür; sahte sıçrama yazılmaz.
@@ -277,7 +278,7 @@ dosyalar `0600 root`) **okuyamaz**. Root gerektirmeyen ortak salt-okuma grubu Fa
 | Lag var mı, hangi çekirdekte? | game sağlık satırı: `late_pulses`, `iter_gap_max_us`, `work_max_us`, bölüm payları | `m2metrics.py --hours 1` |
 | Döngü mü, işletim sistemi mi? | `iter_gap_max_us` büyük ama `work_max_us` küçük → süreç çalışamadı (CPU/swap/VM); dbstat `load1`, `mem_free_mb`, `swap_used_mb` | yukarıdaki iki özet |
 | MariaDB mi, disk mi? | dbstat: `row_lock_waits/time_ms`, `deadlocks`, `table_locks_waited`, `threads_running`, `ms_w`, `qlen`, `busy_pct`, `mariadbd` CPU | `m2metrics.py --dbstat` (root ya da `m2stat`/`wheel`) |
-| SQL kuyruğu mu? | DB adım 1c kabul edilince `log/sql_*.log` (kuyruk, en eski bekleyen, takılma, hata/tekrar, SAVE sonuçları) | 1c belgesi |
+| SQL kuyruğu mu? | `log/sql_*.log`: `kind=sum` (kuyruk, en eski bekleyen, takılma, hata/tekrar, db'de SAVE sonuçları), anormallikte `kind=conn` | `m2metrics.py --sql --hours 1`; "SQL (sql_*.log)" bölümü |
 | Yedek mi? | `status-backup-hot` (`lock_ms`, `duration_s`, zaman); dakika :17'de çalışır | `/var/backups/m2dev/status-*` (root) |
 | Son yedek/geri yükleme testi sağlam mı? | `status-backup-*`, `status-restore-test` (`result`, zaman → yaş), yedek makinesinde `status-pull`/`status-daily` | `docs/backup.md` |
 | Hata kaydı | `syserr.log` (sadece **son açılıştan beri**, T-1), `log/syslog_*.log` | süreç klasörü |
