@@ -1,0 +1,41 @@
+#!/bin/sh
+#
+# m2dev-dbstat: read-only MariaDB + FreeBSD health sampler (docs/monitoring.md -> "MariaDB / OS (dbstat)").
+# Install as /usr/local/etc/rc.d/m2dev_dbstat (0555). game, db and MariaDB do not depend on it.
+#
+# PROVIDE: m2dev_dbstat
+# REQUIRE: LOGIN mysql
+# KEYWORD: shutdown
+#
+# m2dev_dbstat_enable (bool):  YES to start at boot (default NO)
+# m2dev_dbstat_runas (str):    unprivileged OS user; MariaDB user of the same name via unix_socket, USAGE only.
+#                              Not ${name}_user: rc.subr would then start daemon(8) itself via su as that user, so it
+#                              could not write its pid files under /var/run (and pid files writable by that user are
+#                              unsafe for 'service stop'). daemon starts as root, opens the pid files, then -u drops.
+# m2dev_dbstat_out (dir):      output directory
+# m2dev_dbstat_flags (str):    extra options (see m2dev-dbstat --help)
+
+. /etc/rc.subr
+
+name=m2dev_dbstat
+rcvar=m2dev_dbstat_enable
+load_rc_config $name
+
+: ${m2dev_dbstat_enable:=NO}
+: ${m2dev_dbstat_runas:=m2stat}
+: ${m2dev_dbstat_out:=/var/log/m2dev-metrics}
+: ${m2dev_dbstat_flags:=}
+
+pidfile=/var/run/${name}.pid
+command=/usr/sbin/daemon
+# -f: detach stdin/stdout/stderr (else the starting shell or ssh session stays attached); -S: then send the
+# collector's stdout/stderr to syslog; -r -R 30: restart a crashed collector after at least 30 s (no restart or log storm)
+command_args="-f -S -r -R 30 -P ${pidfile} -u ${m2dev_dbstat_runas} -T m2dev-dbstat /usr/local/sbin/m2dev-dbstat --out ${m2dev_dbstat_out} ${m2dev_dbstat_flags}"
+start_precmd=m2dev_dbstat_prestart
+
+m2dev_dbstat_prestart()
+{
+	install -d -o "${m2dev_dbstat_runas}" -m 0750 "${m2dev_dbstat_out}"
+}
+
+run_rc_command "$1"

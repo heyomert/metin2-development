@@ -7,6 +7,7 @@ Read-only. Python 3 standard library only.
     python3 m2metrics.py --hours 24
     python3 m2metrics.py --dir /path/to/channels --host channel1_1
     python3 m2metrics.py --raw --hours 1       # print the matching lines instead of a summary
+    python3 m2metrics.py --dbstat /var/log/m2dev-metrics --hours 24   # MariaDB/OS/process lines of m2dev-dbstat
 
 Fields are read by name (key=value), never by position, so new fields do not break this tool.
 """
@@ -122,6 +123,72 @@ def summarise(records, lag_list_limit):
         print()
 
 
+def num(value):
+    """dbstat values: int, float, or None for 'NA' (unsupported) and '-' (no valid delta this window)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+
+def summarise_dbstat(lines):
+    """MariaDB/OS/process summary of dbstat lines (fields: docs/monitoring.md -> MariaDB / OS (dbstat))."""
+    db = [r for r in lines if r.get("kind") == "db"]
+    os_rows = [r for r in lines if r.get("kind") == "os"]
+    procs = [r for r in lines if r.get("kind") == "proc"]
+
+    up = [r for r in db if r.get("up") == "1"]
+    down = [r for r in db if r.get("up") == "0"]
+    window = sum(num(r.get("window_s")) or 0 for r in up) or 1
+    total = lambda f: sum(num(r.get(f)) or 0 for r in up)
+    print(f"== MariaDB: {len(up)} samples up, {len(down)} down "
+          f"({', '.join(sorted({r.get('err', '?') for r in down})) or 'no errors'}); "
+          f"restarts {sum(1 for r in up if r.get('restart') == '1')}; version {up[-1].get('version') if up else '?'}")
+    if up:
+        waits, wait_ms = total("row_lock_waits"), total("row_lock_time_ms")
+        print(f"   queries {total('questions') / window:.1f}/s (select {total('com_select')}, insert {total('com_insert')}, "
+              f"update {total('com_update')}, replace {total('com_replace')}, delete {total('com_delete')})")
+        print(f"   InnoDB row lock waits {waits} ({wait_ms} ms total, "
+              f"{(wait_ms / waits) if waits else 0:.0f} ms avg), deadlocks {total('deadlocks')}")
+        print(f"   table lock waits (Aria/MyISAM, count only, no duration) {total('table_locks_waited')} "
+              f"of {total('table_locks_waited') + total('table_locks_immediate')} table lock requests")
+        req, rd = total("bp_read_requests"), total("bp_reads")
+        areq, ard = total("aria_cache_read_requests"), total("aria_cache_reads")
+        print(f"   syncs: InnoDB {total('innodb_fsyncs') / window:.2f}/s, Aria {total('aria_log_syncs') / window:.2f}/s; "
+              f"cache hit InnoDB {100 * (1 - rd / req) if req else 100:.2f}%, Aria {100 * (1 - ard / areq) if areq else 100:.2f}%")
+        print(f"   threads_running max {max(num(r.get('threads_running')) or 0 for r in up)}; "
+              f"slow_queries {total('slow_queries')} (only above long_query_time_s={up[-1].get('long_query_time_s')}); "
+              f"unsupported fields {max(num(r.get('na')) or 0 for r in up)}")
+    if os_rows:
+        vals = lambda f: [v for v in (num(r.get(f)) for r in os_rows) if v is not None]
+        print(f"== OS: load1 max {max(vals('load1'), default=0)}, mem_free_mb min {min(vals('mem_free_mb'), default=0)}, "
+              f"swap_used_mb max {max(vals('swap_used_mb'), default=0)}; disk {os_rows[-1].get('disk')}: "
+              f"ms_w max {max(vals('ms_w'), default=0)}, qlen max {max(vals('qlen'), default=0)}, "
+              f"busy_pct max {max(vals('busy_pct'), default=0)}")
+    by_name = defaultdict(list)
+    for r in procs:
+        by_name[r.get("name")].append(r)
+    if by_name:
+        print("== processes (cpu % of one core while sampled, all pids of that name together; rss max)")
+        for name in sorted(by_name):
+            rows = sorted(by_name[name], key=lambda r: r["ts"])
+            # Each cpu_us delta covers the time since the previous line of the same pid; periods without lines
+            # (collector stopped, process not running) count neither in the numerator nor the denominator.
+            cpu_us, covered, last = 0, 0.0, {}
+            for r in rows:
+                pid, us = r.get("pid"), num(r.get("cpu_us"))
+                if us is not None and pid in last:
+                    cpu_us += us
+                    covered += (r["ts"] - last[pid]).total_seconds()
+                last[pid] = r["ts"]
+            cpu = f"{100 * cpu_us / 1e6 / covered:7.3f}%" if covered else "     n/a"
+            print(f"   {name:18s} cpu {cpu}  rss max {max(num(r.get('rss_kb')) or 0 for r in rows) / 1024:7.1f} MB"
+                  f"  pids {len({r.get('pid') for r in rows})}, restarts {sum(1 for r in rows if r.get('restart') == '1')}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dir", default=DEFAULT_DIR, help=f"channels directory (default {DEFAULT_DIR})")
@@ -129,9 +196,34 @@ def main():
     ap.add_argument("--host", help="only this host, e.g. channel1_1")
     ap.add_argument("--lags", type=int, default=10, help="late windows to list per host (default 10)")
     ap.add_argument("--raw", action="store_true", help="print matching lines instead of a summary")
+    ap.add_argument("--dbstat", metavar="DIR", help="summarise m2dev-dbstat files in DIR (e.g. /var/log/m2dev-metrics)")
     args = ap.parse_args()
 
     since = datetime.now(timezone.utc) - timedelta(hours=args.hours)
+    if args.dbstat:
+        lines = []
+        for path in sorted(glob.glob(os.path.join(args.dbstat, "dbstat_*.log"))):
+            with open(path, encoding="utf-8", errors="replace") as fp:
+                for line in fp:
+                    parts = line.split()
+                    try:
+                        ts = datetime.strptime(parts[0], "%Y-%m-%dT%H:%M:%S%z")
+                    except (IndexError, ValueError):
+                        continue
+                    if ts < since:
+                        continue
+                    if args.raw:
+                        sys.stdout.write(line)
+                        continue
+                    rec = {"ts": ts}
+                    rec.update(p.split("=", 1) for p in parts[1:] if "=" in p)
+                    lines.append(rec)
+        if not args.raw:
+            if not lines:
+                print(f"no dbstat lines in the last {args.hours:g} h under {args.dbstat}", file=sys.stderr)
+                return 1
+            summarise_dbstat(lines)
+        return 0
     files = find_files(args.dir, int(args.hours // 24) + 1)
     if not files:
         print(f"no metrics files under {args.dir}", file=sys.stderr)

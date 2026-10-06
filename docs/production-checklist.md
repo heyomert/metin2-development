@@ -119,3 +119,6 @@ Ayrıntı: `docs/backup.md`. Test VM'de hepsi geçti (`docs/worklog/2026-10-05-d
       kaydedildi. Test VM'de ACPI-fast ile okuma ~11,6 µs, metrik maliyeti süreç başına bir çekirdeğin ~%0,6'sı
       (`docs/monitoring.md` → Ölçüm maliyeti). Okuma ~1 µs'nin üstündeyse `METRICS_ENABLE` ve bölüm sayısı yeniden değerlendirilir.
 - [ ] Her game sürecinde `log/metrics_<gün>.log` yazılıyor, `metrics_dropped` ve `metrics_write_errors` 0.
+- [ ] `m2dev-dbstat` kurulu ve açılışta başlıyor (`docs/engineering/db-step1b-collector.md` → Kurulum): OS kullanıcısı
+      `m2stat`, MariaDB `m2stat@localhost` sadece `USAGE` (unix_socket; `SHOW GRANTS` ile kontrol). `kind=db up=1 na=0`,
+      bütün izlenen süreçler `kind=proc` satırında görünüyor (`security.bsd.see_other_uids=1`). Datadir ZFS'teyse `--disk`.
