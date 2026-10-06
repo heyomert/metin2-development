@@ -268,7 +268,8 @@ Panel, yönetim servisi ve teşhis yapan agent'lar bu kaynakları **olduğu gibi
   (`docs/build-and-run.md` → "Kanıtın sınırı"). dbstat ayrı derlenir, henüz kimlik taşımaz.
 
 **Hata kaydı ve önceki çalışmalar (T-1).** Açılışta, `syserr` dosyası açılmadan önce, önceki çalışmanın boş olmayan
-`syserr.log`'u `log/syserr_YYYY-MM-DD_HH-MM-SS.log`'a taşınır (ad = dosyanın son yazma zamanı, yerel saat; ad doluysa `_2`, `_3`…)
+`syserr.log`'u `log/syserr_YYYY-MM-DD_HH-MM-SS.log`'a taşınır (ad = dosyanın son yazma zamanı, yerel saat; ad doluysa `_2`, `_3`…;
+**ölüm zamanı değildir:** `kill -9` ile ölen bir çekirdeğin arşivi son satırının zamanını taşır, test VM'de açılış satırlarınınkini)
 ve syslog'a `SYSERR_ARCHIVE: previous run moved to …` yazılır; `syserr.log` böylece sadece bu çalışmayı tutar
 (`server-src/src/libthecore/log.cpp`, `archive_previous_syserr`).
 - **Taşınamazsa hiçbir şey silinmez:** `log/` kullanılamıyor, ad bulunamıyor, taşıma ya da dosya bilgisi okunamıyorsa eski kayıt

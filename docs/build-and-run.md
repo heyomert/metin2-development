@@ -184,8 +184,9 @@ doğrulayan tek giriş noktalı release script'i. Kurulmadan ve fiilen test edil
 
 **Test VM bugün (git yok) — `archive` yolu:**
 ```sh
-# Windows (repo kökü): commit'lenmiş içerik; tar.umask=022 -> 0644/0755, herkese yazılabilir dosya yok
-git -c tar.umask=022 archive --format=tar.gz -o server-src-<commit>.tar.gz <commit> server-src
+# Windows (repo kökü): commit'lenmiş içerik; tar.umask=022 -> 0644/0755, herkese yazılabilir dosya yok;
+# core.autocrlf=false -> üyeler Git blob'larıyla aynı bayt (aşağıdaki tuzak 3)
+git -c core.autocrlf=false -c tar.umask=022 archive --format=tar.gz -o server-src-<commit>.tar.gz <commit> server-src
 # VM: her seferinde temiz dizin; -m dosyalara açılma zamanını verir (aşağıdaki saat farkı)
 rm -rf /root/src-<commit> && mkdir /root/src-<commit> && tar -xzmf server-src-<commit>.tar.gz -C /root/src-<commit>
 cmake -S /root/src-<commit>/server-src -B /root/build-<commit> -DCMAKE_BUILD_TYPE=Release && cmake --build /root/build-<commit> -j4
@@ -194,7 +195,11 @@ sh m2dev-install-binaries.sh --policy test-vm /root/build-<commit>/bin/game /roo
 Tuzaklar (ölçüldü 2026-10-06): (1) Windows saati VM'den ~4,7 dk ileride (VM'de `ntpd` kapalı); `git archive` dosya
 zamanlarını commit zamanı yazar → `-m` olmadan açılan dosyalar VM'e göre "gelecekte" kalır ve make o süre boyunca her şeyi
 yeniden derler. (2) FreeBSD `make` zamanları saniye çözünürlüğünde karşılaştırır; kimlik başlığı bu yüzden sadece
-değiştiğinde ve içinde bulunulan saniye geçtikten sonra yazılır (`BuildIdentity.cmake`).
+değiştiğinde ve içinde bulunulan saniye geçtikten sonra yazılır (`BuildIdentity.cmake`). (3) Git for Windows sistem
+ayarı `core.autocrlf=true` (`C:/Program Files/Git/etc/gitconfig`) ve `server-src`'de `text`/`eol` özniteliği yok → `git archive`
+metin dosyalarını CRLF'ye çevirir (ölçüldü 2026-10-07, `8fbec589`: 1.423 üyenin 1.422'si blob'dan farklı). `-c core.autocrlf=false`
+ile farklı kalan 4 üye beklenen: `SOURCE_COMMIT` (`export-subst`) ve 3 LFS resmi (arşivde pointer değil içerik). Derlemeyi
+etkilemiyordu; arşiv baytlarının commit'le aynı olması için. Kalıcı `.gitattributes` kuralı ayrı analiz (roadmap teknik borç).
 
 ## Test ortamı
 

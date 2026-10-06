@@ -63,10 +63,31 @@ alınırsa en eski görünebilir). `g_syserr->flush_on(err)`. Sözleşme: `docs/
 - `tools/sql-reliability/run.sh` aynı libthecore ile: koruma öz-testi 3/3 ret, 13 senaryo 10/10 aynı; S1–S11 davranış satırları
   (`stats` hariç) 1a baseline'ıyla birebir aynı (26/26). `sqlrt` her senaryoyu boş dizinde çalıştırdığı için arşivleme devreye
   girmiyor.
-- **Henüz doğrulanmadı:** çalışan süreçlerde (deploy + yeniden başlatma, ayrı onay).
+- **Uçtan uca, test VM (2026-10-07, `8fbec589` = PR #21 merge, `archive` + `--policy test-vm`):**
+  - A: stop (5 game "End of pid", db `reason=final`) → consistent yedek `result=ok` → kurulum (`.prev` = T-2 çifti + `BUILD`) →
+    start → 6 süreç; kimlik zinciri (`version`, `BUILD:`, sağlık/SQL `build=`, `BUILD`, `deploy.log`, SHA-256) aynı; **6/6 arşiv
+    durdurma sonrası kopyayla SHA-256 birebir**, adlar son yazma zamanıyla aynı, syslog'da bildirim, `syserr`'de uyarı yok,
+    normalize `syserr` önceki açılışla aynı; giriş (core1 seçim → core3 map 41), SQL hata/retry/takılma 0.
+  - B: `channel1_core2` (`users_local=0`, istemci bağlantısı 0; PID üç kaynaktan doğrulandı) `kill -9` → diğer 5 süreç ayakta;
+    beklenen izler: db `FDWATCH: peer null` (1 satır), diğer çekirdeklerde P2P soketi kapandı; zincirleme etki yok. stop (`stop.py`
+    ölü PID'i atladı) → start → **6/6 yeni arşiv birebir**, A'nın arşivleri değişmedi; core2 arşivinde "End of pid" ve SIGTERM
+    yok, 4 game'de var, db'de beklendiği gibi yok; son giriş, SQL hata 0.
+  - Gözlemler: (1) ölen çekirdeğin arşiv adı ölüm değil son yazma zamanı (`00-27-14`, açılış satırları) → `docs/monitoring.md`;
+    (2) `STATE_MOVE_ZERO_DURATION` uyarıları oyuncu hareketinden, upstream kod (`game/char_state.cpp:770`), T-1 ile ilgisiz;
+    (3) db `workers_down=8` sadece eski süreçlerin kapanış `sum` satırlarında (beklenen).
+  - **Boş PID (operasyonel bulgu, T-1 blocker değil):** ilk denemede PID çıkarımı boş döndü (çok satırlı `pids.json`'u `grep`
+    ayrıştıramadı) ve ad-hoc komut boş PID'de fail-closed durmuyordu; `kill` kullanım hatası verdi, **hiçbir sinyal gönderilmedi,
+    hiçbir süreç etkilenmedi** (6 süreç aynı PID'lerle çalışmaya devam etti). Asıl testte PID üç bağımsız kaynaktan doğrulandı:
+    JSON olarak `pids.json`, çekirdeğin `pid` dosyası, `procstat` (binary yolu + çalışma dizini).
+- **CRLF (ölçüldü):** `git archive` sistem `core.autocrlf=true` yüzünden metin üyelerini CRLF'ye çeviriyordu (`log.cpp`: 304 CR);
+  `-c core.autocrlf=false` arşivinde üyeler blob'larla aynı (`SOURCE_COMMIT` ve 3 LFS resmi hariç, beklenen) →
+  `docs/build-and-run.md` tuzak 3.
 
 ## Bir dahaki sefere tuzaklar
 - libc++'ta `status`/`symlink_status` var olmayan yolda `ec` doldurur; önce `type() == not_found`'a bak.
 - Bu VM'de saat okuması pahalı (~11,6 µs, ACPI-fast); satır başı zamanlama yapan ölçümler mutlak maliyeti şişirir.
+- Süreç öldüren/sinyal gönderen bir komut tekrar kullanılacak bir script'e girerse zorunlu koruma: PID boş olamaz, yalnız sayısal,
+  beklenen süreç adı/binary/çalışma dizini ile eşleşmeli; eşleşmezse sinyal gönderilmeden fail-closed dur. (Bu testteki komut
+  ad-hoc'tu; ürün kodu yazılmadı.)
 - `syserr`'e satır başına ~19 µs oyun thread'i maliyeti (bu VM, 200 B satır) — istemcinin tetiklediği satırlar (A-14) bu yüzden
   disk kadar CPU açısından da önemli.
