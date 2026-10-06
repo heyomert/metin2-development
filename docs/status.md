@@ -1,17 +1,18 @@
 # Durum
 
-Kapsadığı commit: DB adım 1b PR'ı (2026-10-06; taban 32159c3c). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
-Güncel mi? `git log --oneline 32159c3c..HEAD -- . ':!docs/status.md'` 1b PR'ı dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
+Kapsadığı commit: kontrol katmanı ilkeleri doküman commit'i (2026-10-06; taban 646978d6). **Üzerine yaz, ekleme yapma**; biten madde silinir (geçmiş: git, `docs/worklog/`). En fazla ~25 satır.
+Güncel mi? `git log --oneline 646978d6..HEAD -- . ':!docs/status.md'` bu doküman commit'i dışında bir şey gösteriyorsa eski olabilir; değişikliklere bak, düzelt.
 
 ## Şu an
-DB standardı çalışması (plan: `docs/engineering/db-standard.md`). **Adım 1b bitti:** bağımsız, salt okunur MariaDB/OS toplayıcısı `m2dev-dbstat` test VM'de servis olarak çalışıyor (`m2stat`, sadece `USAGE`) → `/var/log/m2dev-metrics/`, okuma `m2metrics.py --dbstat`; `docs/worklog/2026-10-06-dbstat-collector.md`. Bekleyen: 1 günlük gerçek boyut. **Adım 1a (PR #14):** AsyncSQL baseline'ı, `tools/sql-reliability/` (12 senaryo, 10/10 deterministik) → `docs/worklog/2026-10-06-asyncsql-baseline.md`. Doğrulanan sorunlar (bugünkü kod): retry pratikte çalışmıyor ve kuyruk tıkanabiliyor; 1205/1213/2013 yazmaları kayboluyor; `CountQuery()` kopya kuyruğunu görmüyor ve takılı işler kapanışta kayboluyor; async yoldan sonuç döndüren ifade bağlantıyı bozuyor (bugün çağıran yok). DB yedeği (PR #13) ve sağlık kaydı (PR #12) test VM'de çalışıyor. Production ☐.
+DB standardı çalışması (plan: `docs/engineering/db-standard.md`). **Adım 1c uygulanıyor, henüz kabul edilmedi** (branch `feat/sql-counters`, `docs/engineering/db-step1c-sql-counters.md`). **Adım 1b bitti (PR #15):** bağımsız, salt okunur MariaDB/OS toplayıcısı `m2dev-dbstat` test VM'de servis olarak çalışıyor (`m2stat`, sadece `USAGE`) → `/var/log/m2dev-metrics/`, okuma `m2metrics.py --dbstat`; `docs/worklog/2026-10-06-dbstat-collector.md`. Bekleyen: 1 günlük gerçek boyut. **Adım 1a (PR #14):** AsyncSQL baseline'ı, `tools/sql-reliability/` (12 senaryo, 10/10 deterministik) → `docs/worklog/2026-10-06-asyncsql-baseline.md`. Doğrulanan sorunlar (bugünkü kod): retry pratikte çalışmıyor ve kuyruk tıkanabiliyor; 1205/1213/2013 yazmaları kayboluyor; `CountQuery()` kopya kuyruğunu görmüyor ve takılı işler kapanışta kayboluyor; async yoldan sonuç döndüren ifade bağlantıyı bozuyor (bugün çağıran yok). DB yedeği (PR #13) ve sağlık kaydı (PR #12) test VM'de çalışıyor. Production ☐.
 
 ## Sıradaki (her adım ayrı etki analizi + onay)
-1. **1c** AsyncSQL/db gözlem sayaçları (metrics bileşeni seçenekleri karşılaştırılacak; davranış 1a ile aynı kalmalı; tablo kilidi süresi burada)
-2. **AsyncSQL reliability fix** (1a testleri tersine dönmeli)
-3. **Şema yönetimi / migration standardı** (sürümlü migration, InnoDB kuralı)
-4. **InnoDB dönüşümü** (migration olarak; `INSERT DELAYED` kaldırma ile birlikte) → yük testiyle kabul
-Ayrı onay bekleyen: ticaret + geçici trigger testi (değer kaybı mı, dupe mı).
+1. **1c** AsyncSQL/db SQL sayaçları: kabul testleri, ardından PR (davranış 1a ile aynı kalmalı)
+2. **T-1** `syserr.log` yeniden başlatmada korunur + **T-2 / 1.9** sürüm kimliği → ikisi AsyncSQL düzeltmesi **devreye alınmadan önce** (`docs/roadmap.md`)
+3. **AsyncSQL reliability fix** (1a testleri tersine dönmeli)
+4. **Şema yönetimi / migration standardı** (sürümlü migration, makinece okunur şema sürümü, InnoDB kuralı)
+5. **InnoDB dönüşümü** (migration olarak; `INSERT DELAYED` kaldırma ile birlikte) → yük testiyle kabul
+Bağımsız: **T-3** disk boş alanı (dbstat'a küçük ekleme), **T-4** süreç bazında servis durumu (1.7 ile), `db.core` (2026-10-05) incelemesi. Ayrı onay bekleyen: ticaret + geçici trigger testi.
 
 ## Senden bekleyen kararlar
 - `heart_idle` gecikmede fazladan pulse sayıyor (teknik borç): yük testinden önce etki analizi yapılsın mı
