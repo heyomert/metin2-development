@@ -167,3 +167,44 @@ beklemeleri, senkron, önbellek isabeti, OS, süreç başına CPU/RSS); `--raw` 
 
 **Maliyet (test VM'de ölçüldü):** toplayıcı 0,65–1,14 ms CPU/örnek (iki koşu; 10 sn aralıkta ≤ %0,012 çekirdek), RSS ~10,7 MB sabit;
 MariaDB tarafı ~0,45 ms/okuma; çıktı ~18 MB/gün. Toplayıcı kendi maliyetini `name=m2dev-dbstat` satırında raporlar.
+
+# Telemetri sözleşmesi (bütün kaynaklar)
+
+Panel, yönetim servisi ve teşhis yapan agent'lar bu kaynakları **olduğu gibi** okur (`docs/architecture.md` →
+"Kontrol katmanı ilkeleri"). Yeni bir telemetri kaynağı ya da alanı bu kurallara uyar:
+- **Biçim:** tek satır, `<yerel zaman %Y-%m-%dT%H:%M:%S%z> anahtar=değer ...`; değerde boşluk ve `=` yok. Alanlar **adıyla**
+  okunur, sırayla değil. Yeni alan eklenebilir; bir alanın anlamı ya da biçimi değişirse `schema` artar.
+- **Kaynak:** `src=` alanı ya da dosya öneki (`metrics_` game sağlık satırı — `src` alanı yok, dosya önekinden anlaşılır;
+  `dbstat_`; `status-*` yedek/restore-test). Süreç başına dosyalar sürecin `log/` klasöründe, günlük, 14 gün.
+- **Değer türleri:** Δ (pencere farkı), kümülatif toplam (`*_total`, süreç başından beri) ve anlık ayrı adlandırılır ya da
+  tabloda belirtilir. `NA` = bu sürümde yok, `-` = bu pencerede güvenilir fark yok. Yeniden başlatma `pid` değişimi ya da
+  `restart=1` ile görünür; sahte sıçrama yazılmaz.
+- **`host` alanı:** game satırlarında **süreç adı** (`channel1_1`, `auth`…), dbstat'ta **makine adı**. Değiştirilmedi
+  (game satırı yayında); çok makinede toplayan servis makine bilgisini dosyayı nereden okuduğundan ekler.
+- **Hassas veri yok:** şifre, gizli bilgi, IP, hesap/karakter adı, SQL metni yazılmaz.
+- **Gözlem gözleneni bozmaz:** yazan süreç okuyucuyu beklemez, okuyucuya bağlanmaz; yazma hatası satırı düşürür ve sayar.
+- **Kendi kaybını raporlar:** `metrics_dropped`, `metrics_write_errors`, `write_errors`.
+
+**Bilinen teşhis açıkları** (`docs/roadmap.md`): T-1 `syserr.log` yeniden başlatmada sıfırlanıyor, T-2 çalışan sürüm
+bilinmiyor (1.9), T-3 disk boş alanı ölçülmüyor, T-4 `service m2dev status` tek süreç canlıyken sağlıklı görünüyor.
+
+# Olay teşhisi (insan ve agent)
+
+Bir sorun bildirildiğinde kodu taramadan önce **bu sırayla** salt okunur kaynaklara bak. Hepsi test VM'de `ssh bsd` ile,
+okuma yetkisiyle yeterli; hiçbiri veri değiştirmez.
+
+| Soru | Kaynak | Komut / yer |
+|---|---|---|
+| Hangi süreçler çalışıyor, yeniden başladı mı? | dbstat `kind=proc` (`first=1`, `pid` değişimi), game satırlarında `pid`/`uptime_s` | `m2metrics.py --dbstat … --hours 1`; `pids.json`. `service m2dev status`'a güvenme (T-4) |
+| Lag var mı, hangi çekirdekte? | game sağlık satırı: `late_pulses`, `iter_gap_max_us`, `work_max_us`, bölüm payları | `m2metrics.py --hours 1` |
+| Döngü mü, işletim sistemi mi? | `iter_gap_max_us` büyük ama `work_max_us` küçük → süreç çalışamadı (CPU/swap/VM); dbstat `load1`, `mem_free_mb`, `swap_used_mb` | yukarıdaki iki özet |
+| MariaDB mi, disk mi? | dbstat: `row_lock_waits/time_ms`, `deadlocks`, `table_locks_waited`, `threads_running`, `ms_w`, `qlen`, `busy_pct`, `mariadbd` CPU | `m2metrics.py --dbstat` |
+| SQL kuyruğu mu? | DB adım 1c kabul edilince `log/sql_*.log` (kuyruk, en eski bekleyen, takılma, hata/tekrar, SAVE sonuçları) | 1c belgesi |
+| Yedek mi? | `status-backup-hot` (`lock_ms`, `duration_s`, zaman); dakika :17'de çalışır | `/var/backups/m2dev/status-*` (root) |
+| Son yedek/geri yükleme testi sağlam mı? | `status-backup-*`, `status-restore-test` (`result`, zaman → yaş), yedek makinesinde `status-pull`/`status-daily` | `docs/backup.md` |
+| Hata kaydı | `syserr.log` (sadece **son açılıştan beri**, T-1), `log/syslog_*.log` | süreç klasörü |
+| Hangi binary? | Bugün kesin bilinemiyor (T-2) | — |
+
+Teşhis ayrımı: **game döngüsü** (bir çekirdekte `late_pulses` + yüksek `work_max_us`) · **işletim sistemi/VM** (gap büyük,
+work küçük, bütün çekirdeklerde aynı anda) · **MariaDB** (kilit beklemeleri, `threads_running`) · **disk** (`ms_w`, `qlen`,
+`busy_pct`) · **SQL kuyruğu** (1c) · **yedek** (aynı dakikada `lock_ms` ve `table_locks_waited`).

@@ -119,7 +119,11 @@ Her madde mevcut repoya ve ölçüme dayanıyor.
    kalıcı hatalar listeden çıkar (kaydedilir + sayılır, kuyruğu kilitlemez); 1213/1205 güvenle tekrar; 2013 sadece güvenli
    sınıf; kapanışta kopya kuyruğu da boşaltılır ve sayılır; `CLIENT_MULTI_STATEMENTS` kapanır; `db`'de başarısız
    `*_SAVE` önbelleği tekrar kirli işaretler (bir sonraki flush yeniden dener). Hata enjeksiyonuyla test (bölüm 8).
+   **Devreye almadan önce:** roadmap T-1 (`syserr.log` yeniden başlatmada korunur) ve T-2 / 1.9 (çalışan binary'nin
+   sürümü kesin bilinir); önce/sonra karşılaştırmasında hata kanıtı ve ölçülen binary kanıtlanabilsin.
 3. **Şema yönetimi:** migration dizini + `schema_migrations` + uygulama script'i + motor kuralı (D-1), D-5 düzeltmeleri.
+   Uygulanmış son migration (şema sürümü) **makinece okunur** olmalı: salt-okuma okuyucu (yönetim servisi, teşhis yapan
+   agent) "hangi şema çalışıyor" sorusunu veri okumadan cevaplayabilmeli (`docs/architecture.md` → "Kontrol katmanı ilkeleri").
 4. **Dönüşüm = migration 0001:** bütün uygulama tabloları InnoDB (`ROW_FORMAT=DYNAMIC`, Aria seçenekleri temizlenir) +
    aynı sürümde `game/log.cpp`'den `DELAYED` kaldırılır. Bakım yedeğiyle geri dönüş.
 5. **Yedek kilitsiz moda:** anlık görüntü; manifest bütün tablolar için içerik özeti + bütünlük sorguları.

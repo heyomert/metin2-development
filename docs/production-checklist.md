@@ -122,3 +122,9 @@ Ayrıntı: `docs/backup.md`. Test VM'de hepsi geçti (`docs/worklog/2026-10-05-d
 - [ ] `m2dev-dbstat` kurulu ve açılışta başlıyor (`docs/engineering/db-step1b-collector.md` → Kurulum): OS kullanıcısı
       `m2stat`, MariaDB `m2stat@localhost` sadece `USAGE` (unix_socket; `SHOW GRANTS` ile kontrol). `kind=db up=1 na=0`,
       bütün izlenen süreçler `kind=proc` satırında görünüyor (`security.bsd.see_other_uids=1`). Datadir ZFS'teyse `--disk`.
+- [ ] **Saat senkronizasyonu doğrulandı** (ör. `ntpd`/`chronyd` çalışıyor ve senkron; komut çıktısıyla kaydedildi): farklı
+      telemetri kaynakları ve yedek makinesi zaman damgasıyla birleştiriliyor. Test VM'de `ntpd` kapalı (`ntpd_enable=NO`);
+      VirtualBox'ın saati kendisi senkronlayıp senkronlamadığı **doğrulanmadı**.
+- [ ] **Teşhis açıkları kapandı** (`docs/roadmap.md`): T-1 `syserr.log` yeniden başlatmada korunuyor; T-2 / 1.9 çalışan
+      binary'nin sürümü makinece okunur ve devreye alma kaydıyla eşleşiyor; T-3 disk boş alanı ölçülüyor (datadir, log ve
+      yedek dizinleri); T-4 servis durumu süreç bazında doğru (tek çekirdek çökünce sağlıklı görünmüyor).
