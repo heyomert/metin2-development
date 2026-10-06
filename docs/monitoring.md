@@ -287,7 +287,31 @@ ve syslog'a `SYSERR_ARCHIVE: previous run moved to …` yazılır; `syserr.log` 
   (log, `pid_deinit`'ten önce kapanıyor; roadmap teknik borç); db'nin düzgün kapanışı `log/sql_*`'deki `reason=final` satırlarıyla
   görülür.
 
-**Bilinen teşhis açıkları** (`docs/roadmap.md`): T-1 `syserr.log` arşivi kodlandı, çalışan süreçlerde henüz doğrulanmadı; T-2 (1.9) derleme
+**Gelecek: hata kaydı hacmi ve arşiv izleme (tasarım notu, henüz kod yok; A-14 / T-3 / panel 3.2).** Yönetim servisi ve panel
+ileride **salt okuma** olarak şunları gösterebilmeli:
+- süreç başına aktif `syserr.log` boyutu ve kısa pencerelerdeki büyüme hızı (bayt/MB artışı); mümkünse hata satırı / sn ya da dk;
+- en çok hata üreten süreç/çekirdek;
+- `log/syserr_*.log` arşiv sayısı ve saklama durumu (30'a göre), son başarılı arşivleme zamanı;
+- `SYSERR_ARCHIVE` uyarı/fallback durumu (sona ekleme olmuş mu);
+- host disk boş alanıyla birlikte değerlendirme (T-3); anormal hızlı büyüme ya da düşük disk alanı için warning/critical.
+
+Panel kapalı olsa da loglama, arşivleme ve saklama bağımsız çalışmaya devam eder (gözlem sistemi gözleneni bozmaz). İlkeler:
+- **Boyut sınırında kanıt silinmez.** A-14/T-3'te gerekliliği kanıtlanırsa hedef: aktif dosya → güvenli döndürme → eski dosyayı
+  koru → yeni aktif dosya → saklama politikası. Aktif dosyayı kesmek ya da silmek çözüm değildir.
+- **Kör susturma yok.** Hız sınırı gerekirse olayın sayısı / bastırılan satır sayısı (suppressed count) gibi teşhis bilgisi korunur;
+  gerçek tasarım A-14 analizinden sonra.
+- **Ayrı saklama sınıfları.** Güvenlik/anti-cheat, ekonomi ve GM/admin denetim kayıtlarının saklaması sıradan `syserr` saklamasıyla
+  (30 çalışma) aynı sayılmaz; ileride ayrı politika (A-2 / KVKK ile).
+- **Gözlemin maliyeti hissedilmez.** Monitoring/panel production oyun döngüsünde, MariaDB'de ya da ortak diskte hissedilir
+  etki oluşturmamalı. Mümkün olduğunca: mevcut telemetriyi oku; dosya sistemi metadata'sı kullan (boyut, mtime); log'ları
+  kaldığı yerden (incremental) oku, büyük log'ları tekrar tekrar baştan tarama; sonuçları önbelleğe al/topla; panel
+  yenilemesiyle production DB'ye sürekli ağır sorgu gönderme; oyun thread'ine yalnız panel için ağır hesap koyma.
+- **Maliyet ölçülür, uydurulmaz.** 2.500–3.000 bağlantılı yük/dayanıklılık kabulünde (roadmap 2.2) monitoring maliyeti ayrıca
+  ölçülür: aynı/eşdeğer yükte monitoring **kapalı** baseline ile **açık** karşılaştırılır (CPU, RAM, disk I/O, oyun döngüsü/tick
+  gecikmesi, SQL/DB gecikmesi, ilgili kuyruk metrikleri). Önceden yapay bütçe/eşik konmaz: önce ölçüm, fark kanıtlanır, kabul
+  sınırı gerçek baseline'a göre belirlenir.
+
+**Bilinen teşhis açıkları** (`docs/roadmap.md`): T-1 `syserr.log` arşivi test VM'de çalışan süreçlerde doğrulandı (production ayrı); T-2 (1.9) derleme
 kimliği test VM'de çalışan süreçlerde doğrulandı, production temiz-git derleme yolu henüz yok; T-3 disk boş
 alanı ölçülmüyor; T-4 `service m2dev status` tek süreç canlıyken sağlıklı görünüyor.
 
