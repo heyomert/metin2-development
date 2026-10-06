@@ -4,7 +4,7 @@
 - **Tür:** özellik / karar / ortam
 - **Alan:** server-src / runtime / tools
 - **Durum:** Aktif
-- **PR / commit:** —
+- **PR / commit:** https://github.com/heyomert/metin2-development/pull/17
 
 ## Problem / hedef
 1a, AsyncSQL'in bugünkü hatalarını geçici bir MariaDB'de kanıtladı: takılan kuyruk, tekrar edilmeyen 1205/1213/2013,
