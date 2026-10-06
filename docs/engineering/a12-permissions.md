@@ -78,7 +78,7 @@ dizinlerindeki symlink'lerle `share/bin/{game,db}`. `stop.py` de root ile çalı
 
 ## 4. Runtime'ın gerçekten yazdıkları (Kanıtlı, kod)
 Her süreç kendi çalışma dizinine (`channels/<…>/`) yazar: `log/` (`metrics_*`, `sql_*`, `syslog_*`), `syslog.log`,
-`syserr.log` (`libthecore/log.cpp:43`), `pid` (`libthecore/main.cpp:18`), `version.txt`/`VERSION.txt`, `usage.txt` (db),
+`syserr.log` ve `log/syserr_*.log` (`libthecore/log.cpp`, `log_init`), `pid` (`libthecore/main.cpp:18`), `version.txt`/`VERSION.txt`, `usage.txt` (db),
 `castle_data.txt` (`game/castle.cpp:521`), `lotto.txt`, `special_item_group_vnum.txt`. **Paylaşılan tek yazma alanı
 `share/mark`** (kanal dizinindeki `mark` symlink'i; lonca amblemleri, `game/MarkManager.cpp:39,115`). Başlatıcı
 `server/pids.json` yazar. Süreçler root olduğu için bunların **hiçbiri** grup ya da herkes yazma izni gerektirmiyor.
