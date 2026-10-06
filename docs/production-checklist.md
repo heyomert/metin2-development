@@ -133,5 +133,11 @@ Ayrıntı: `docs/backup.md`. Test VM'de hepsi geçti (`docs/worklog/2026-10-05-d
       telemetri kaynakları ve yedek makinesi zaman damgasıyla birleştiriliyor. Test VM'de `ntpd` kapalı (`ntpd_enable=NO`);
       VirtualBox'ın saati kendisi senkronlayıp senkronlamadığı **doğrulanmadı**.
 - [ ] **Teşhis açıkları kapandı** (`docs/roadmap.md`): T-1 `syserr.log` yeniden başlatmada korunuyor; T-2 / 1.9 çalışan
-      binary'nin sürümü makinece okunur ve devreye alma kaydıyla eşleşiyor; T-3 disk boş alanı ölçülüyor (datadir, log ve
+      binary'nin sürümü makinece okunur ve devreye alma kaydıyla eşleşiyor (aşağıdaki T-2 kapısı); T-3 disk boş alanı ölçülüyor (datadir, log ve
       yedek dizinleri); T-4 servis durumu süreç bazında doğru (tek çekirdek çökünce sağlıklı görünmüyor).
+- [ ] **Derleme kimliği (T-2 / 1.9)** (`docs/build-and-run.md` → "Derleme kimliği ve kurulum"): production binary'leri git'li
+      derleme makinesindeki temiz-git release script'iyle derlendi (bu yol fiilen test edildi) ve
+      `m2dev-install-binaries.sh` varsayılan `production` politikasıyla kuruldu (sadece `src=git dirty=0`); her çalışan game/db
+      sürecinin `version.txt`/`VERSION.txt`'i, telemetri satırlarındaki `build=` ve `deploy.log`'daki son `result=installed`
+      satırı aynı commit'i gösteriyor; `share/bin/{game,db}` SHA-256'sı o satırla aynı. Kanıtın sınırı: işaret bir beyan,
+      SHA-256 tam dosya; imzalı derleme değil.

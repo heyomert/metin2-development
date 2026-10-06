@@ -62,6 +62,7 @@ süresini kapsadığı için kapanan pencereye eklenir, böylece uzun bir tur ve
 | `sent_bytes` | bayt | Oyunculara/peer'lara yazılan bayt | `desc.cpp` `current_bytes_written` (delta ile, kayma yok) |
 | `metrics_dropped` | adet | Kuyruk dolu olduğu için atılan satır (**süreç başından beri**) | spdlog `discard_counter` |
 | `metrics_write_errors` | adet | Dosyaya yazılamayan satır (**süreç başından beri**) | `metrics_daily_sink.h` |
+| `build`, `build_dirty`, `build_src` | metin | Bu satırı yazan binary'nin gömülü derleme kimliği: tam commit (40 hex ya da `unknown`), `0`/`1`/`unknown`, `git`/`archive`/`injected`/`none`. Sürecin ömrü boyunca sabit; derleme değişince pencere hangi binary'ye ait doğrudan görülür. Kimliksiz eski binary'lerin satırlarında yok | `common/build_identity_impl.h` (`M2BuildFields`), `docs/build-and-run.md` → "Derleme kimliği" |
 
 ## Normal aralıklar
 **BASELINE_PENDING.** Production ve yük testi ölçümü yok; aralıklar acceptance/yük/soak ölçümlerinden sonra buraya
@@ -176,6 +177,7 @@ sayaçlar `libsql/AsyncSQL` içinde, sorgu işleme onları okumaz. Tasarım ve k
 | `direct_n`, `direct_err`, `direct_max_ms` (`sum`); `exec_ms_total`, `exec_max_ms` (`direct` `conn`) | Δ / kümülatif | `DirectQuery` sayısı/hatası/en uzunu; ucuz saat, ±10 ms: kısa sorguları ölçmez, döngüyü bekleten uzunları yakalar |
 | `unexecuted_at_quit` | sayı | sadece db'nin `reason=final` satırında: worker durduğunda kopya kuyruğunda kalıp **hiç çalıştırılmayan**. game'de yok (bağlantıları log kapandıktan sonra kapanıyor) |
 | `metrics_dropped`, `metrics_write_errors` (`sum`) | süreç başından beri | bu akışın kendi kayıpları |
+| `build`, `build_dirty`, `build_src` (`sum`) | sabit | sağlık satırıyla aynı kanonik derleme kimliği (yukarıda) |
 
 **db'ye özel (`kind=sum`, Δ):** `save_player_ok/_err`, `save_item_ok/_err`, `destroy_item_ok/_err`, `save_quest_ok/_err`,
 `save_safebox_ok/_err`, `award_taken_ok/_err`. `CClientManager::AnalyzeQueryResult` girişinde, peer aranmadan önce
@@ -260,9 +262,14 @@ Panel, yönetim servisi ve teşhis yapan agent'lar bu kaynakları **olduğu gibi
 - **Hassas veri yok:** şifre, gizli bilgi, IP, hesap/karakter adı, SQL metni yazılmaz.
 - **Gözlem gözleneni bozmaz:** yazan süreç okuyucuyu beklemez, okuyucuya bağlanmaz; yazma hatası satırı düşürür ve sayar.
 - **Kendi kaybını raporlar:** `metrics_dropped`, `metrics_write_errors`, `write_errors`.
+- **Derleme kimliği:** game sağlık ve SQL `sum` satırları aynı `build= build_dirty= build_src=` alanlarını taşır (satır
+  başına +79 bayt, ölçüldü); `m2metrics.py` süreç başına görülen derlemeyi ve dönem içindeki değişikliği gösterir. Bu bir
+  **beyandır** (binary'nin gömülü işareti), özgünlük kanıtı değildir; tam dosya kanıtı `deploy.log`'daki SHA-256
+  (`docs/build-and-run.md` → "Kanıtın sınırı"). dbstat ayrı derlenir, henüz kimlik taşımaz.
 
-**Bilinen teşhis açıkları** (`docs/roadmap.md`): T-1 `syserr.log` yeniden başlatmada sıfırlanıyor, T-2 çalışan sürüm
-bilinmiyor (1.9), T-3 disk boş alanı ölçülmüyor, T-4 `service m2dev status` tek süreç canlıyken sağlıklı görünüyor.
+**Bilinen teşhis açıkları** (`docs/roadmap.md`): T-1 `syserr.log` yeniden başlatmada sıfırlanıyor; T-2 (1.9) derleme
+kimliği mekanizması var, ama kimlikten önce derlenen binary'ler ve production temiz-git derleme yolu henüz yok; T-3 disk boş
+alanı ölçülmüyor; T-4 `service m2dev status` tek süreç canlıyken sağlıklı görünüyor.
 
 # Olay teşhisi (insan ve agent)
 
@@ -282,7 +289,7 @@ dosyalar `0600 root`) **okuyamaz**. Root gerektirmeyen ortak salt-okuma grubu Fa
 | Yedek mi? | `status-backup-hot` (`lock_ms`, `duration_s`, zaman); dakika :17'de çalışır | `/var/backups/m2dev/status-*` (root) |
 | Son yedek/geri yükleme testi sağlam mı? | `status-backup-*`, `status-restore-test` (`result`, zaman → yaş), yedek makinesinde `status-pull`/`status-daily` | `docs/backup.md` |
 | Hata kaydı | `syserr.log` (sadece **son açılıştan beri**, T-1), `log/syslog_*.log` | süreç klasörü |
-| Hangi binary? | Bugün kesin bilinemiyor (T-2) | — |
+| Hangi binary? | Satırdaki `build=`; sürecin `version.txt`/`VERSION.txt`'i; kurulu dosya ↔ kimlik eşlemesi `/var/db/m2dev/deploy.log` ve `share/bin/BUILD` (SHA-256). Kimlikten önceki binary'lerde alan yok | `m2metrics.py` (süreç başına "build …") |
 
 Teşhis ayrımı: **game döngüsü** (bir çekirdekte `late_pulses` + yüksek `work_max_us`) · **işletim sistemi/VM** (gap büyük,
 work küçük, bütün çekirdeklerde aynı anda) · **MariaDB** (kilit beklemeleri, `threads_running`) · **disk** (`ms_w`, `qlen`,

@@ -103,22 +103,80 @@ cmake --build /root/build-verify -j4
 - Çıktı: `<build>/bin/{game,db,qc}`. Derleme çalışan sunucuya **dokunmaz** (çıktı sadece `bin/`'e gider, `server-src/CMakeLists.txt:46`;
   kopyalama/install adımı yok).
 - Çalışan binary'ler: `/usr/local/m2dev-acceptance/server/share/bin/{game,db,qc}` — kanal klasörlerindeki `channelN_coreM` ve `db`
-  bunlara symlink. Devreye almak = eski binary'yi sakla → `service m2dev stop` → **`m2dev-backup consistent`** (kayıpsız DB
-  yedeği; servis çalışırken reddeder, `docs/backup.md`) → kopyala → servisi başlat → test.
+  bunlara symlink. Devreye almak = `service m2dev stop` → **`m2dev-backup consistent`** (kayıpsız DB yedeği; servis çalışırken
+  reddeder, `docs/backup.md`) → **`m2dev-install-binaries.sh`** (game + db birlikte, aşağıda) → servisi başlat → test.
 - VM kaynak ağacı `/usr/local/m2dev-acceptance/server-src`, repodaki `server-src` ile aynı (460 dosyanın içerik özeti eşleşti).
   Kod değiştirirken önce repodaki değişikliği VM'e taşı, sonra derle.
 - **İki derleme dizini var, farkı bil:**
   - `/usr/local/m2dev-acceptance/build/server-freebsd`: 4 Ekim derlemesi. Sunucu kodu `-O3`, ama vendor MariaDB kütüphanesi
     `-O2 -g` ile derlenmiş (`libmariadbclient.a` 3,5 MB, debug bilgili). Sebebi kayıtlı değil. **Artık kullanılmıyor.**
   - `/root/build-verify`: yukarıdaki komutla sıfırdan; her şey `-O3`, MariaDB kütüphanesi debug bilgisiz (0,9 MB). **Bundan sonra burada derle.**
-- **Şu an çalışan binary'ler (2026-10-05):** `game` → `/root/build-verify` (K-3 port güvenliği + log maskeleme, PR'da);
-  `db` ve `qc` → hâlâ 4 Ekim derlemesi (değişmedi). İlk devreye almada giriş, karakter yükleme/kaydetme, harita geçişi test edildi: sorun yok.
+- **Şu an çalışan binary'ler (2026-10-06):** `game` ve `db` → DB adım 1c (PR #17, `/root/build-1c`, kaynak `/root/src-1c`);
+  `qc` → 4 Ekim derlemesi. Önceki çift `/root/pre-1c-2026-10-06/` (sha256 ile). Bu binary'lerin gömülü kimliği yok
+  (derleme kimliğinden önce derlendi).
 - VM kaynak dosyaları: değiştirdiğin dosyayı VM'e LF olarak kopyala (`tr -d '\r' < dosya | ssh bsd "cat > hedef"`), sonra özetleri
   karşılaştır. VM'deki diğer kaynak dosyalar CRLF (Windows checkout'tan); derleyici için fark etmez.
 - Debug bilgisi kararı: çökme analizinde (roadmap 1.7) debug bilgili binary işe yarar. `Release` debug bilgisi içermiyor;
   `RelWithDebInfo` ya da ayrı sembol dosyası değerlendirilmeli — henüz karar verilmedi.
 - Yedekler (VM): 4 Ekim binary'leri ve özetleri `/root/build-baseline-2026-10-05/`; K-3 öncesi kaynak dosyaları `/root/k3-code-backup/`.
   Geri dönüş: servisi durdur → `cp /root/build-baseline-2026-10-05/game /usr/local/m2dev-acceptance/server/share/bin/game` → başlat.
+
+### Derleme kimliği ve kurulum (roadmap 1.9 / T-2)
+Her game ve db binary'si hangi kaynaktan derlendiğini kendi içinde taşır; kurulum bu kimliği ve dosyanın SHA-256'sını
+kaydeder. Kod: `server-src/cmake/BuildIdentity.cmake`, `src/common/build_identity*.h`, `deploy/freebsd/m2dev-install-binaries.sh`.
+
+**Kimlik her derlemede hesaplanır** (configure anında değil); değişmediyse başlık yazılmaz, hiçbir şey yeniden derlenmez;
+değiştiyse sadece iki `version.cpp` derlenir (ölçüldü). Kaynak, ilk uyan:
+
+| `src` | Ne zaman | `commit` / `dirty` |
+|---|---|---|
+| `git` | `server-src` bir git çalışma ağacında | `HEAD` / `server-src` altında git'in gördüğü her şey: değişmiş, izlenmeyen **ve yok sayılan** dosyalar (`GLOB_RECURSE` yok sayılan `old_BK/*.cpp`'yi de derler), bu derlemenin kendi derleme dizini hariç. `client/` sayılmaz |
+| `archive` | `server-src/SOURCE_COMMIT` 40 hex (`git archive` + `export-subst`) | dışa aktarılan commit / `0` (açıldıktan sonraki değişikliği **göremez**) |
+| `injected` | `-DM2_BUILD_COMMIT=<40 hex> -DM2_BUILD_DIRTY=0\|1` | verilen değer (doğrulanmamış beyan) |
+| `none` | hiçbiri | `unknown` + derlemede görünür CMake uyarısı; derleme sürer |
+
+Çalışırken: açılışta `version.txt` (game) / `VERSION.txt` (db) `component=… commit=… dirty=… src=… describe=…` ve syslog'da
+`BUILD:` satırı; sağlık ve SQL `sum` satırlarında `build= build_dirty= build_src=` (`docs/monitoring.md`).
+
+**Kurulum politikası** (`m2dev-install-binaries.sh`, varsayılan `production`, fail-closed):
+
+| Kimlik | Geliştirme (installer yok) | `--policy test-vm` | `--policy production` |
+|---|---|---|---|
+| `git`, `dirty=0` | ✓ | ✓ | ✓ (**sadece bu**) |
+| `git`, `dirty=1` | ✓ + uyarı | sadece `--policy dev` | ✗ |
+| `archive` | ✓ | ✓ | ✗ |
+| `injected` | ✓ + uyarı | sadece `--policy dev` | ✗ |
+| `none` / `unknown` | ✓ + CMake uyarısı | sadece `--policy dev` | ✗ |
+| işaret yok/bozuk/çift, game ≠ db (commit/dirty/src), hedeften çalışan game/db süreci | — | ✗ | ✗ |
+
+Her politikada: iki binary önce tamamen doğrulanır (hiçbir dosyaya dokunmadan), sonra aşama → mevcut çifti yedekle
+(`share/bin/.prev.<zaman>.<pid>`) → `rename` → SHA-256 doğrula → `share/bin/BUILD` + `/var/db/m2dev/deploy.log`. İkinci dosya,
+doğrulama ya da kayıt adımı başarısız olursa önceki çift (ve `BUILD`) geri konur ve doğrulanır; `result=installed` sadece
+hepsi başarılıysa yazılır (`result=failed rolled_back=1` denetim için). Süreç kontrolü `procstat -b -a` ile gerçek binary
+yolundan yapılır (`service m2dev status`'a güvenilmez, T-4). Modlar: binary `0755`, `BUILD` `0644`, `deploy.log` `0640`,
+dizinler `0750`/`0700`; herkese yazılabilir bir şey oluşturulmaz. Testler: `deploy/freebsd/test-install-binaries.sh`.
+
+**Kanıtın sınırı:** gömülü işaret = binary'nin kendi kaynak kimliği **beyanı**; SHA-256 = kurulan **tam dosya**; temiz git
+derleme yolu = kaynak ağacının **doğrulanmış** durumu. Hiçbiri tek başına imzalı derleme/özgünlük kanıtı değildir; işaret
+taklit edilebilir. A-12 izin/deploy bütünlüğü bu tehdidi azaltır; imzalı derleme gerekirse ayrıca değerlendirilir.
+
+**Production yolu (henüz yok):** git'li bir FreeBSD derleme makinesinde, istenen commit'i temiz bir dizine klonlayıp ayrı
+dizinde derleyen, derlemeden önce ve sonra `git status`'u yeniden kontrol eden ve işaretin `HEAD` ile aynı olduğunu
+doğrulayan tek giriş noktalı release script'i. Kurulmadan ve fiilen test edilmeden production kapısı kapanmaz.
+
+**Test VM bugün (git yok) — `archive` yolu:**
+```sh
+# Windows (repo kökü): commit'lenmiş içerik; tar.umask=022 -> 0644/0755, herkese yazılabilir dosya yok
+git -c tar.umask=022 archive --format=tar.gz -o server-src-<commit>.tar.gz <commit> server-src
+# VM: her seferinde temiz dizin; -m dosyalara açılma zamanını verir (aşağıdaki saat farkı)
+rm -rf /root/src-<commit> && mkdir /root/src-<commit> && tar -xzmf server-src-<commit>.tar.gz -C /root/src-<commit>
+cmake -S /root/src-<commit>/server-src -B /root/build-<commit> -DCMAKE_BUILD_TYPE=Release && cmake --build /root/build-<commit> -j4
+sh m2dev-install-binaries.sh --policy test-vm /root/build-<commit>/bin/game /root/build-<commit>/bin/db
+```
+Tuzaklar (ölçüldü 2026-10-06): (1) Windows saati VM'den ~4,7 dk ileride (VM'de `ntpd` kapalı); `git archive` dosya
+zamanlarını commit zamanı yazar → `-m` olmadan açılan dosyalar VM'e göre "gelecekte" kalır ve make o süre boyunca her şeyi
+yeniden derler. (2) FreeBSD `make` zamanları saniye çözünürlüğünde karşılaştırır; kimlik başlığı bu yüzden sadece
+değiştiğinde ve içinde bulunulan saniye geçtikten sonra yazılır (`BuildIdentity.cmake`).
 
 ## Test ortamı
 
