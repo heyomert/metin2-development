@@ -97,6 +97,10 @@ class DBManager : public singleton<DBManager>
 
 		size_t EscapeString(char* dst, size_t dstSize, const char *src, size_t srcSize);
 
+		// Telemetry only (CServerMetrics): CollectStats never touches query handling
+		CAsyncSQL*		GetSQLForStats()		{ return &m_sql; }
+		CAsyncSQL*		GetDirectSQLForStats()	{ return &m_sql_direct; }
+
 	private:
 		SQLMsg *				PopResult();
 
@@ -168,6 +172,10 @@ class AccountDB : public singleton<AccountDB>
 		void SetLocale(const std::string & stLocale);
 
 		void Process();
+
+		// Telemetry only (CServerMetrics)
+		CAsyncSQL* GetSQLForStats()			{ return &m_sql; }
+		CAsyncSQL* GetDirectSQLForStats()	{ return &m_sql_direct; }
 
 	private:
 		SQLMsg * PopResult();

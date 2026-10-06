@@ -2,7 +2,8 @@
 
 Her `game` süreci (auth dahil; db hariç) 10 saniyede bir tek satırlık sağlık kaydı yazar. Amaç: production'a geçmeden
 önce sunucuyu gözlemlenebilir yapmak, lag/stabilite olaylarını sonradan kanıtla teşhis edebilmek ve yük testini
-okuyabilmek. Kaynak: `server-src/src/game/server_metrics.{h,cpp}`, `server-src/src/game/metrics_daily_sink.h`;
+okuyabilmek. Kaynak: `server-src/src/game/server_metrics.{h,cpp}`; yazıcı `server-src/src/common/metrics_writer.h` +
+`metrics_daily_sink.h` (game ve db'deki bütün telemetri akışları aynı kodu, **ayrı** kuyruk/worker ile kullanır);
 karar ve testler: `docs/worklog/2026-10-05-server-metrics.md`.
 
 **Agent'lar için:** "lag var mıydı / sunucu ne durumda" sorusuna önce buradan bak; serbest metin log'u (`syslog.log`)
@@ -118,8 +119,75 @@ sistem çağrısı gerektirmez, maliyetin yüzlerce kat düşük olması bekleni
 - Başlatma başarısız olursa metrikler kapalı kalır (`syserr`: `METRICS: initialization failed`), oyun devam eder.
 - Metrik thread'i bütün sinyalleri engeller: `SIGVTALRM` watchdog'u ve diğer işleyiciler eskisi gibi çalışır.
 - Kapanışta son kısmi pencere yazılır, kuyruk boşaltılır (`destroy()` → `thecore_destroy` öncesi).
-- Test: `tools/metrics/sink-test.cpp` (sink + havuz, oyun gerekmez; 8 senaryo: normal yazma, kuyruk doygunluğu,
-  dizin/dosya yolu hatası, saklama, gece yarısı, sinyaller, disk dolması).
+- Test: `tools/metrics/sink-test.cpp` (`metrics_writer`, oyun gerekmez; 10 senaryo: normal yazma, kuyruk doygunluğu,
+  dizin/dosya yolu hatası, saklama, gece yarısı, sinyaller, aynı süreçte iki akışın birbirinden bağımsızlığı (tıkanma
+  ve yazamama), disk dolması).
+
+# SQL (sql_*.log)
+
+game çekirdekleri ve db, SQL bağlantılarının kuyruk, bekleme ve hata durumunu ayrı bir dosyaya yazar. Amaç: AsyncSQL'in
+bugünkü davranışını (takılan kuyruk, tekrar denenmeyen hatalar; `docs/engineering/db-step1-measurement.md` → 1a
+sonuçları) canlıda görünür yapmak ve düzeltme/InnoDB dönüşümünü önce/sonra karşılaştırmak. **Davranışı değiştirmez**:
+sayaçlar `libsql/AsyncSQL` içinde, sorgu işleme onları okumaz. Tasarım ve kanıtlar:
+`docs/engineering/db-step1c-sql-counters.md`. Kaynak: `libsql/AsyncSQL.{h,cpp}` (`CollectStats`),
+`common/sql_metrics.h` (satırlar), `game/server_metrics.cpp`, `db/DBMetrics.{h,cpp}`.
+
+- Dosya: her sürecin klasöründe `log/sql_YYYY-MM-DD.log` (game çekirdekleri ve `channels/db/log/`), 14 gün. Zaman
+  damgası game sağlık satırıyla aynı yazıcıdan: UTC farkı `+03:00` biçiminde (dbstat `+0300` yazar; ikisi aynı an).
+- Boyut: **bu saha ölçümünde** (test VM, oyuncusuz, 1 saat) game süreci ~3,9 MB/gün, db ~6,4 MB/gün; 6 süreç yaklaşık
+  24 MB/gün, 15 dosya ≈ 370 MB. `sum` satırı her 10 sn yazılır ve alanları sabit; `anomaly` satırları olaylarla artar.
+  Yük altında ölçülmedi (roadmap 2.2).
+  game'in `metrics_*.log`'u değişmez. Okuma: `python3 tools/metrics/m2metrics.py --sql --hours 24`.
+- Açma/kapama: game `METRICS_ENABLE` (`conf/game.txt`, sağlık satırıyla birlikte), db `METRICS_ENABLE` (`conf/db.txt`,
+  yoksa 1). Kapalıyken satır yazılmaz; sayaçlar (birkaç atomik) her zaman çalışır.
+- Yazma: kendi kuyruğu ve worker'ı (`metrics_writer`); sağlık satırının kuyruğunu, `metrics_dropped` sayacını ya da
+  syslog havuzunu paylaşmaz.
+
+**Satırlar.** Önek `schema=1 src=sql kind=sum|conn host=<host|db> pid=<pid> uptime_s=<n>`.
+- `kind=sum`: süreç başına **her 10 sn**; değerler **o pencerenin Δ'sı** (`window_ms` gerçek süre, `first=1` ilk
+  pencere = süreç başından beri) ve anlık en kötü değerler.
+- `kind=conn`: bağlantı başına, **sadece** gerekince: `reason=start` (ilk pencere), `anomaly` (o pencerede hata, tekrar,
+  yeniden bağlanma görüldü, takılma, en eski bekleyen ≥ 1 sn ya da worker yok), `periodic` (5 dk'da bir), `final`
+  (kapanış). Sayaçlar **kümülatif** (`*_total`, süreç başından beri): iki satır arasındaki fark, aradaki satırlar yazılmasa
+  ya da düşse bile doğrudur. Süreç yeniden başlarsa `pid` değişir ve toplamlar 0'dan başlar.
+
+**Bağlantı etiketleri** (`kind=conn`): `owner` (bağlantıyı tutan nesne), `target` (hangi config veritabanı), `role`.
+| owner | target | role | Not |
+|---|---|---|---|
+| `dbmanager` | `player` (auth çekirdeğinde `account`) | `main`, `direct` | `game/config.cpp:902-906` |
+| `accountdb` | `common` | `main`, `direct` | adı yanıltıcı: `common_sql`'e bağlanır (`game/config.cpp:854,900`) |
+| `logmanager` | `log` | `main` | auth çekirdeğinde kurulmaz → satırı yok |
+| `db` | `player`, `account`, `common`, `hotbackup` | `main` (ReturnQuery), `async`, `direct` | bağlanmayan slot yok sayılır |
+`mode=thread` worker'lı (Async/ReturnQuery), `mode=direct` çağıranın thread'inde (`DirectQuery`, game döngüsünü bekletir).
+
+| Alan (`conn`) / Δ adı (`sum`) | Tür | Anlam |
+|---|---|---|
+| `q`, `cq`, `rq` | anlık | ana kuyrukta / worker'ın kopya kuyruğunda (takılı baş dahil) / sonuç kuyruğunda bekleyen |
+| `oldest_ms` (`sum`: `oldest_ms_max`) | anlık | bitmemiş en eski sorgu ne zamandır bekliyor (kuyruğa girişten; ±10 ms) |
+| `stuck_ms` (`sum`: `stuck_conns`) | anlık | baştaki sorgu ne zamandır başarısız olup tekrar bekliyor |
+| `worker` (`sum`: `workers_down`) | anlık | worker thread çalışıyor mu (ilk bağlantısı kurulamadıysa 0 ve kuyruk büyür) |
+| `pushed_total` / `pushed` | kümülatif / Δ | kuyruğa giren |
+| `ok_total` / `ok` | kümülatif / Δ | son denemesi hatasız biten |
+| `err_total` / `err` | kümülatif / Δ | son denemesi hatayla biten: **o ifade uygulanmadı** (veri kaybı kanıtı değil) |
+| `retry_total` / `retry` | kümülatif / Δ | başarısız olup kuyrukta tekrar bekleyen deneme (tekrarın **ne zaman** yapılacağı garanti değil, 1a S1) |
+| `reconnect_seen_total` / `reconnect_seen` | kümülatif / Δ | sorgudan önce bağlantının yenilendiği **fark edildi** (Connector/C'nin sessiz yeniden bağlanması dahil; kopma anı değil) |
+| `e2006 e2013 e2014 e1205 e1213 e_other` (+`_total`) | kümülatif / Δ | başarısız **denemeler** hata koduna göre; toplam = `err + retry` (+ `direct_err`) |
+| `exec_n_total`, `exec_us_total`, `exec_max_us` / `exec_n`, `exec_us`, `exec_max_us` | kümülatif, aralık / Δ | biten sorguların son denemesinin süresi: kilit bekleme + çalışma + ağ, **ayrılamaz** (`conn`'da `exec_max_us` önceki `conn` satırından beri) |
+| `direct_n`, `direct_err`, `direct_max_ms` (`sum`); `exec_ms_total`, `exec_max_ms` (`direct` `conn`) | Δ / kümülatif | `DirectQuery` sayısı/hatası/en uzunu; ucuz saat, ±10 ms: kısa sorguları ölçmez, döngüyü bekleten uzunları yakalar |
+| `unexecuted_at_quit` | sayı | sadece db'nin `reason=final` satırında: worker durduğunda kopya kuyruğunda kalıp **hiç çalıştırılmayan**. game'de yok (bağlantıları log kapandıktan sonra kapanıyor) |
+| `metrics_dropped`, `metrics_write_errors` (`sum`) | süreç başından beri | bu akışın kendi kayıpları |
+
+**db'ye özel (`kind=sum`, Δ):** `save_player_ok/_err`, `save_item_ok/_err`, `destroy_item_ok/_err`, `save_quest_ok/_err`,
+`save_safebox_ok/_err`, `award_taken_ok/_err`. `CClientManager::AnalyzeQueryResult` girişinde, peer aranmadan önce
+sayılır (cache flush kayıtları `dwIdent=0` ile gelir ve peer'siz erken dönüşe düşer; sayım onlardan önce).
+- `_err` = **son deneme hatalı, o SAVE uygulanmadı**. Kayıtlar tam satır yazar; aynı satırın sonraki başarılı SAVE'i bunu
+  düzeltir. Kalıcı kayıp ancak ondan önce önbellekten düşerse ya da süreç kapanırsa olur; sayaç bunu **kanıtlamaz**.
+- Kapanıştaki cache flush'ın sonuçları hiç işlenmez (ana döngü bitmiştir): bu alanlarda yoktur; sadece `player/main`
+  bağlantısının `err_total`'ında ve `unexecuted_at_quit`'te görünür.
+
+**Okurken:** `exec_*` uzun ama `e1205=0` → Aria/MyISAM tablo kilidi beklemesine **işaret** (kanıt değil); dbstat'ın
+`table_locks_waited`'ı ile birlikte oku. `retry>0` ve `stuck_ms` büyüyorsa o bağlantının kuyruğu tıkalı (1a S3);
+arkasındaki bütün sorgular bekliyor (`cq`, `oldest_ms`).
 
 # MariaDB / OS (dbstat)
 
@@ -176,13 +244,14 @@ Panel, yönetim servisi ve teşhis yapan agent'lar bu kaynakları **olduğu gibi
   okunur, sırayla değil. Yeni alan eklenebilir; bir alanın anlamı ya da biçimi değişirse `schema` artar.
 - **UTC farkının iki yazımı:** kaynaklar aynı farkı iki biçimde yazar ve okuyucular **ikisini de** kabul etmelidir
   (2026-10-06'da gerçek dosyalarda doğrulandı; başka biçim görülmedi):
-  - `+03:00` — spdlog desenindeki `%z`: game sağlık satırı (`metrics_*.log`; `game/server_metrics.cpp`).
+  - `+03:00` — spdlog desenindeki `%z`: game sağlık satırı ve SQL satırları (`metrics_*.log`, `sql_*.log`;
+    `common/metrics_writer.h`).
   - `+0300` — C `strftime`/`date` `%z`: dbstat satırı ve `time=` alanı olan durum dosyaları (`status-backup-*`,
     `status-restore-test`, yedek makinesinin `status-pull`/`status-daily`'si).
   Aynı anı gösterirler; Python `datetime.strptime(..., "%Y-%m-%dT%H:%M:%S%z")` ikisini de ayrıştırır (`m2metrics.py`).
   Biçimleri eşitlemek için çalışan kod değiştirilmez.
 - **Kaynak:** `src=` alanı ya da dosya öneki (`metrics_` game sağlık satırı — `src` alanı yok, dosya önekinden anlaşılır;
-  `dbstat_`; `status-*` yedek/restore-test). Süreç başına dosyalar sürecin `log/` klasöründe, günlük, 14 gün.
+  `sql_` (`src=sql`); `dbstat_`; `status-*` yedek/restore-test). Süreç başına dosyalar sürecin `log/` klasöründe, günlük, 14 gün.
 - **Değer türleri:** Δ (pencere farkı), kümülatif toplam (`*_total`, süreç başından beri) ve anlık ayrı adlandırılır ya da
   tabloda belirtilir. `NA` = bu sürümde yok, `-` = bu pencerede güvenilir fark yok. Yeniden başlatma `pid` değişimi ya da
   `restart=1` ile görünür; sahte sıçrama yazılmaz.
@@ -209,7 +278,7 @@ dosyalar `0600 root`) **okuyamaz**. Root gerektirmeyen ortak salt-okuma grubu Fa
 | Lag var mı, hangi çekirdekte? | game sağlık satırı: `late_pulses`, `iter_gap_max_us`, `work_max_us`, bölüm payları | `m2metrics.py --hours 1` |
 | Döngü mü, işletim sistemi mi? | `iter_gap_max_us` büyük ama `work_max_us` küçük → süreç çalışamadı (CPU/swap/VM); dbstat `load1`, `mem_free_mb`, `swap_used_mb` | yukarıdaki iki özet |
 | MariaDB mi, disk mi? | dbstat: `row_lock_waits/time_ms`, `deadlocks`, `table_locks_waited`, `threads_running`, `ms_w`, `qlen`, `busy_pct`, `mariadbd` CPU | `m2metrics.py --dbstat` (root ya da `m2stat`/`wheel`) |
-| SQL kuyruğu mu? | DB adım 1c kabul edilince `log/sql_*.log` (kuyruk, en eski bekleyen, takılma, hata/tekrar, SAVE sonuçları) | 1c belgesi |
+| SQL kuyruğu mu? | `log/sql_*.log`: `kind=sum` (kuyruk, en eski bekleyen, takılma, hata/tekrar, db'de SAVE sonuçları), anormallikte `kind=conn` | `m2metrics.py --sql --hours 1`; "SQL (sql_*.log)" bölümü |
 | Yedek mi? | `status-backup-hot` (`lock_ms`, `duration_s`, zaman); dakika :17'de çalışır | `/var/backups/m2dev/status-*` (root) |
 | Son yedek/geri yükleme testi sağlam mı? | `status-backup-*`, `status-restore-test` (`result`, zaman → yaş), yedek makinesinde `status-pull`/`status-daily` | `docs/backup.md` |
 | Hata kaydı | `syserr.log` (sadece **son açılıştan beri**, T-1), `log/syslog_*.log` | süreç klasörü |

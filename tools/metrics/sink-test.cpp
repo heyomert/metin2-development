@@ -1,12 +1,13 @@
-// Failure-isolation test for the game's metrics writer (server-src/src/game/metrics_daily_sink.h + a private
-// spdlog thread pool with discard_new, as in server_metrics.cpp). Runs on the server host, no game process needed.
+// Failure-isolation test for the telemetry writer used by game and db (server-src/src/common/metrics_writer.h:
+// metrics_daily_sink + a private spdlog thread pool with discard_new per stream). Runs on the server host, no game
+// process needed.
 //
 // Build on the VM (paths from the documented build, docs/build-and-run.md):
-//   c++ -std=c++20 -O2 -DSPDLOG_COMPILED_LIB -I<server-src>/vendor/spdlog-1.15.3/include -I<server-src>/src/game \
+//   c++ -std=c++20 -O2 -DSPDLOG_COMPILED_LIB -I<server-src>/vendor/spdlog-1.15.3/include -I<server-src>/src/common \
 //       -o /tmp/sink-test sink-test.cpp <build>/lib/libspdlog.a -lpthread
 // Run: /tmp/sink-test [dir-on-a-small-filesystem]   (scenario 8 fills it up; as root, e.g.
 //   mkdir -p /tmp/small && mount -t tmpfs -o size=1m tmpfs /tmp/small && /tmp/sink-test /tmp/small; umount /tmp/small)
-#include "metrics_daily_sink.h"
+#include "metrics_writer.h"
 
 #include <spdlog/async_logger.h>
 #include <spdlog/details/thread_pool.h>
@@ -69,29 +70,22 @@ static void BlockAllSignals()
 	pthread_sigmask(SIG_BLOCK, &all, nullptr);
 }
 
+// The component under test, plus a format helper for the scenarios
 struct Writer
 {
-	std::shared_ptr<metrics_daily_sink> sink;
-	std::shared_ptr<spdlog::details::thread_pool> pool;
-	std::shared_ptr<spdlog::async_logger> logger;
+	metrics_writer w;
 
-	Writer(const std::string& dir, spdlog::sink_ptr extra = nullptr)
+	Writer(const std::string& dir, spdlog::sink_ptr extra = nullptr, const char* base = "metrics")
 	{
-		sink = std::make_shared<metrics_daily_sink>(dir, "metrics", 14);
-		sink->set_pattern("%Y-%m-%dT%H:%M:%S%z %v");
-		pool = std::make_shared<spdlog::details::thread_pool>(64, 1, [] { BlockAllSignals(); });
-		if (extra)
-			logger = std::make_shared<spdlog::async_logger>("metrics", spdlog::sinks_init_list{ extra, sink }, pool, spdlog::async_overflow_policy::discard_new);
-		else
-			logger = std::make_shared<spdlog::async_logger>("metrics", sink, pool, spdlog::async_overflow_policy::discard_new);
-		logger->set_error_handler([](const std::string&) {});
+		if (!w.Start(dir, base, 14, 64, extra))
+			std::printf("  [FAIL] metrics_writer::Start failed\n");
 	}
 
-	~Writer()
+	void Line(int i, const char* padding = "")
 	{
-		logger->flush();
-		logger.reset();
-		pool.reset();
+		char buf[256];
+		const int n = std::snprintf(buf, sizeof(buf), "schema=1 line=%d%s", i, padding);
+		w.Write(buf, (size_t) n);
 	}
 };
 
@@ -125,7 +119,7 @@ int main(int argc, char** argv)
 			Writer w(dir.string());
 			for (int i = 0; i < 20; ++i)
 			{
-				w.logger->info("schema=1 line={}", i);
+				w.Line(i);
 				std::this_thread::sleep_for(std::chrono::milliseconds(2));
 			}
 		}
@@ -144,14 +138,14 @@ int main(int argc, char** argv)
 		for (int i = 0; i < N; ++i)
 		{
 			const auto t0 = Clock::now();
-			w.logger->info("schema=1 line={}", i);
+			w.Line(i);
 			const long long us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
 			totalUs += us;
 			if (us > maxUs)
 				maxUs = us;
 		}
 		const long long loopMs = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - loopStart).count();
-		const size_t dropped = w.pool->discard_counter();
+		const size_t dropped = w.w.Dropped();
 		const size_t accepted = (size_t) N - dropped;
 		// accepted = queue capacity + lines the 50 ms sink consumed while the loop ran (+1 in flight)
 		const size_t acceptedMax = 64 + (size_t) (loopMs / 50) + 2;
@@ -159,7 +153,6 @@ int main(int argc, char** argv)
 			loopMs, (double) totalUs / N, maxUs, accepted, acceptedMax, dropped, N);
 		Expect(maxUs < 50000, "no enqueue waited for the 50 ms sink");
 		Expect(accepted <= acceptedMax, "lines beyond the queue and the sink's progress were dropped, not queued");
-		w.pool->reset_discard_counter();
 	}
 
 	std::printf("3. 'log' is a regular file (directory cannot be created)\n");
@@ -168,9 +161,9 @@ int main(int argc, char** argv)
 		std::ofstream(dir.string()) << "x";
 		Writer w(dir.string());
 		for (int i = 0; i < 5; ++i)
-			w.logger->info("schema=1 line={}", i);
+			w.Line(i);
 		std::this_thread::sleep_for(std::chrono::milliseconds(200));
-		Expect(w.sink->GetWriteErrors() == 5, "5 write errors counted, process still running");
+		Expect(w.w.WriteErrors() == 5, "5 write errors counted, process still running");
 	}
 
 	std::printf("4. today's file path is a directory\n");
@@ -179,9 +172,9 @@ int main(int argc, char** argv)
 		fs::create_directories(dir / ("metrics_" + Today() + ".log"));
 		Writer w(dir.string());
 		for (int i = 0; i < 3; ++i)
-			w.logger->info("schema=1 line={}", i);
+			w.Line(i);
 		std::this_thread::sleep_for(std::chrono::milliseconds(200));
-		Expect(w.sink->GetWriteErrors() == 3, "3 write errors counted");
+		Expect(w.w.WriteErrors() == 3, "3 write errors counted");
 	}
 
 	std::printf("5. retention: older than 14 days removed on the first write of a day\n");
@@ -194,7 +187,7 @@ int main(int argc, char** argv)
 			std::ofstream((dir / n).string()) << "x\n";
 		{
 			Writer w(dir.string());
-			w.logger->info("schema=1 line=0");
+			w.Line(0);
 		}
 		Expect(!fs::exists(dir / old20) && !fs::exists(dir / old15), "20 and 15 days old removed");
 		Expect(fs::exists(dir / keep14) && fs::exists(dir / keep1), "14 and 1 days old kept");
@@ -248,6 +241,50 @@ int main(int argc, char** argv)
 		Expect(g_signalsTotal.load() > 0 && g_signalsOnWorker.load() == 0, "no signal handler ran on the worker thread");
 	}
 
+	std::printf("9. two streams in one process (game health + game SQL): one stalled, the other unaffected\n");
+	{
+		auto slow = std::make_shared<slow_sink>();
+		Writer stalled((root / "iso-a").string(), slow, "sql");
+		Writer healthy((root / "iso-b").string(), nullptr, "metrics");
+		long long maxUs = 0;
+		for (int i = 0; i < 5000; ++i)
+		{
+			const auto t0 = Clock::now();
+			stalled.Line(i);
+			const long long us = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - t0).count();
+			if (us > maxUs)
+				maxUs = us;
+			if (i % 250 == 0)
+				healthy.Line(i / 250);
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+		const size_t healthyLines = CountLines(root / "iso-b" / ("metrics_" + Today() + ".log"));
+		std::printf("     stalled stream dropped %llu; healthy stream lines %zu, dropped %llu, write errors %llu; enqueue max %lld us\n",
+			stalled.w.Dropped(), healthyLines, healthy.w.Dropped(), healthy.w.WriteErrors(), maxUs);
+		Expect(stalled.w.Dropped() > 0, "the stalled stream drops its own lines");
+		Expect(healthy.w.Dropped() == 0 && healthy.w.WriteErrors() == 0 && healthyLines == 20,
+			"the other stream wrote all 20 lines, its dropped/write-error counters stay 0");
+		Expect(maxUs < 50000, "no enqueue waited for the stalled sink");
+	}
+
+	std::printf("10. two streams: one cannot write its file, the other unaffected\n");
+	{
+		const fs::path bad = root / "iso-bad";
+		std::ofstream(bad.string()) << "x"; // a regular file where the directory should be
+		Writer broken(bad.string(), nullptr, "sql");
+		Writer healthy((root / "iso-ok").string(), nullptr, "metrics");
+		for (int i = 0; i < 10; ++i)
+		{
+			broken.Line(i);
+			healthy.Line(i);
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+		const size_t healthyLines = CountLines(root / "iso-ok" / ("metrics_" + Today() + ".log"));
+		Expect(broken.w.WriteErrors() == 10, "the broken stream counts 10 write errors");
+		Expect(healthy.w.WriteErrors() == 0 && healthy.w.Dropped() == 0 && healthyLines == 10,
+			"the other stream wrote all 10 lines with no errors counted");
+	}
+
 	if (argc > 1)
 	{
 		// The day's file is already open when the disk fills up, as in a running game: a 400 byte line still fits in
@@ -255,7 +292,7 @@ int main(int argc, char** argv)
 		std::printf("8. disk fills up while today's file is open (small filesystem: %s)\n", argv[1]);
 		const fs::path fill = fs::path(argv[1]) / "fill";
 		Writer w(argv[1]);
-		w.logger->info("schema=1 line=0");
+		w.Line(0);
 		std::this_thread::sleep_for(std::chrono::milliseconds(200));
 		{
 			std::FILE* fp = std::fopen(fill.c_str(), "w");
@@ -269,12 +306,12 @@ int main(int argc, char** argv)
 		const int N = 300;
 		for (int i = 1; i <= N; ++i)
 		{
-			w.logger->info("schema=1 line={} padding=0123456789012345678901234567890123456789", i);
+			w.Line(i, " padding=0123456789012345678901234567890123456789");
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 		std::this_thread::sleep_for(std::chrono::milliseconds(200));
-		const unsigned long long errors = w.sink->GetWriteErrors();
-		const size_t dropped = w.pool->discard_counter();
+		const unsigned long long errors = w.w.WriteErrors();
+		const size_t dropped = w.w.Dropped();
 		const size_t written = CountLines(fs::path(argv[1]) / ("metrics_" + Today() + ".log"));
 		std::printf("     lines in file %zu (incl. the first), write errors %llu, dropped at the queue %zu, of %d\n",
 			written, errors, dropped, N + 1);

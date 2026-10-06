@@ -188,3 +188,8 @@ Revize (1a sonuçlarına göre):
   + **transaction sınırı**.
 - `CLIENT_MULTI_STATEMENTS` kapatma ayrı ve küçük bir değişiklik olarak (kullanılmadığı kanıtlı: bölüm 2,
   `db-standard.md`).
+- **`uiSQLErrno` tekrar sonrası başarıda temizlenmiyor (1c'de bulundu, S12 ile kanıtlı, 10/10):** retry listesindeki bir
+  hatadan sonra tekrar denemesi başarılı olan `ReturnQuery`'nin sonucu `uiSQLErrno=1133` taşıyor, ifade uygulanmış
+  (`applied=1`, `uiFinalErrno=0`). Bu alanı okuyan tek yer `QID_LOGIN_BY_KEY` (`db/ClientManagerLogin.cpp:137`) → o
+  oyuncuya `LOGIN_NOT_EXIST` döner. Düzeltme bu adımda, testle (S12 tersine dönmeli); 1c davranışı değiştirmedi, sadece
+  bilgi amaçlı `uiFinalErrno` ekledi.

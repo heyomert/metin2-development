@@ -10,6 +10,7 @@
 #include "MoneyLog.h"
 #include "Marriage.h"
 #include "ItemIDRangeManager.h"
+#include "DBMetrics.h"
 #include <signal.h>
 #undef OS_FREEBSD
 void SetPlayerDBName(const char* c_pszPlayerDBName);
@@ -33,6 +34,9 @@ int g_iItemCacheFlushSeconds = 60*5;
 int g_iLogoutSeconds = 60*10;
 
 int g_log = 1;
+
+// SQL telemetry lines (log/sql_*.log); conf/db.txt METRICS_ENABLE, default on
+int g_iMetricsEnable = 1;
 
 
 // MYSHOP_PRICE_LIST
@@ -77,9 +81,12 @@ int main()
 	ItemAwardManager ItemAwardManager;
 	marriage::CManager MarriageManager;
 	CItemIDRangeManager ItemIDRangeManager;
+	CDBMetrics DBMetrics;	// after DBManager: destroyed first, it holds pointers to the SQL connections
 
 	if (!Start())
 		return 1;
+
+	DBMetrics.Initialize();
 
 	GuildManager.Initialize();
 	MarriageManager.Initialize();
@@ -107,6 +114,9 @@ int main()
 		usleep(1000);
 		sys_log(0, "WAITING_QUERY_COUNT %d", iCount);
 	}
+
+	// After the SQL connections have quit (what their workers left unexecuted is now countable), before the log closes
+	DBMetrics.Shutdown();
 
 	log_destroy();
 	return 1;
@@ -150,6 +160,9 @@ int Start()
 	
 	
 	int tmpValue;
+
+	if (CConfig::instance().GetValue("METRICS_ENABLE", &g_iMetricsEnable))
+		sys_log(0, "CONFIG: METRICS_ENABLE %d", g_iMetricsEnable);
 
 	int heart_beat = 50;
 	if (!CConfig::instance().GetValue("CLIENT_HEART_FPS", &heart_beat))

@@ -8,12 +8,131 @@
 
 #include "AsyncSQL.h"
 
+#include <ctime>
+
+int64_t SQLStatsClock()
+{
+#if defined(CLOCK_MONOTONIC_FAST) || defined(CLOCK_MONOTONIC_COARSE)
+	// Tick-granular kernel clock: ~63 ns per read on the test VM against ~12 us for CLOCK_MONOTONIC
+	// (docs/engineering/db-step1-measurement.md). Only used for ages in ms.
+#if defined(CLOCK_MONOTONIC_FAST)
+	const clockid_t clk = CLOCK_MONOTONIC_FAST;
+#else
+	const clockid_t clk = CLOCK_MONOTONIC_COARSE;
+#endif
+	struct timespec ts;
+	if (clock_gettime(clk, &ts) != 0)
+		return 1;
+	return static_cast<int64_t>(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000 + 1;
+#else
+	return std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count() + 1;
+#endif
+}
+
+namespace
+{
+	ESQLErrnoBucket ErrnoBucket(unsigned int uiErrno)
+	{
+		switch (uiErrno)
+		{
+			case CR_SERVER_GONE_ERROR:		return SQL_ERRNO_2006;
+			case CR_SERVER_LOST:			return SQL_ERRNO_2013;
+			case CR_COMMANDS_OUT_OF_SYNC:	return SQL_ERRNO_2014;
+			case ER_LOCK_WAIT_TIMEOUT:		return SQL_ERRNO_1205;
+			case ER_LOCK_DEADLOCK:			return SQL_ERRNO_1213;
+			default:						return SQL_ERRNO_OTHER;
+		}
+	}
+
+	// Release, with acquire loads in CollectStats: a collector that sees a later stage (a completion) also sees the
+	// earlier ones (take, push), so derived queue lengths never go negative. Same instruction as relaxed on x86-64.
+	inline void Bump(std::atomic<uint64_t>& counter, uint64_t value = 1)
+	{
+		counter.fetch_add(value, std::memory_order_release);
+	}
+}
+
 CAsyncSQL::CAsyncSQL()
 	: m_stHost(""), m_stUser(""), m_stPassword(""), m_stDB(""), m_stLocale(""),
 	m_iPort(0), m_thread(nullptr), m_bEnd(false), m_bConnected(false),
-	m_iMsgCount(0), m_iQueryFinished(0), m_iCopiedQuery(0), m_ulThreadID(0)
+	m_iMsgCount(0), m_iQueryFinished(0), m_iCopiedQuery(0), m_ulThreadID(0),
+	m_bConfigured(false), m_bThreaded(false), m_bWorkerRunning(false), m_ullPushed(0), m_ullTaken(0), m_ullCopyDone(0), m_ullMainDone(0),
+	m_ullOk(0), m_ullErr(0), m_ullRetry(0), m_ullReconnectSeen(0), m_ullResultPushed(0), m_ullResultPopped(0),
+	m_ullExecCount(0), m_ullExecUsTotal(0), m_ullExecUsMax(0), m_llMainHeadMs(0), m_llCopyHeadMs(0),
+	m_llStuckSinceMs(0), m_ullUnexecutedAtQuit(0)
 {
 	memset(&m_hDB, 0, sizeof(m_hDB));
+	for (auto& c : m_aullErrno)
+		c.store(0, std::memory_order_relaxed);
+}
+
+void CAsyncSQL::NoteAttemptFailed(unsigned int uiErrno)
+{
+	Bump(m_aullErrno[ErrnoBucket(uiErrno)]);
+}
+
+void CAsyncSQL::NoteCompleted(SQLMsg* p, bool bFailed, uint64_t ullExecUs)
+{
+	p->uiFinalErrno = bFailed ? p->uiSQLErrno : 0;
+	Bump(bFailed ? m_ullErr : m_ullOk);
+
+	if (ullExecUs == UINT64_MAX)	// not timed
+		return;
+
+	Bump(m_ullExecCount);
+	Bump(m_ullExecUsTotal, ullExecUs);
+
+	uint64_t cur = m_ullExecUsMax.load(std::memory_order_relaxed);
+	while (cur < ullExecUs && !m_ullExecUsMax.compare_exchange_weak(cur, ullExecUs, std::memory_order_relaxed))
+	{
+	}
+}
+
+void CAsyncSQL::NoteThreadIdSeen()
+{
+	Bump(m_ullReconnectSeen);
+}
+
+void CAsyncSQL::CollectStats(SQLStats& out)
+{
+	const auto get = [](const std::atomic<uint64_t>& a) { return a.load(std::memory_order_acquire); };
+
+	out.configured = m_bConfigured.load(std::memory_order_relaxed);
+	out.threaded = m_bThreaded;
+	out.workerRunning = m_bWorkerRunning.load(std::memory_order_relaxed);
+
+	// Completions first, then what feeds them: a message finishing between two loads can then only make a
+	// queue look one message longer, never negative.
+	out.ok = get(m_ullOk);
+	out.err = get(m_ullErr);
+	const uint64_t copyDone = get(m_ullCopyDone);
+	const uint64_t mainDone = get(m_ullMainDone);
+	const uint64_t taken = get(m_ullTaken);
+	out.pushed = get(m_ullPushed);
+	const uint64_t resultPopped = get(m_ullResultPopped);
+	const uint64_t resultPushed = get(m_ullResultPushed);
+
+	out.retry = get(m_ullRetry);
+	out.reconnectSeen = get(m_ullReconnectSeen);
+	for (int i = 0; i < SQL_ERRNO_BUCKET_MAX; ++i)
+		out.errnoCount[i] = get(m_aullErrno[i]);
+	out.execCount = get(m_ullExecCount);
+	out.execUsTotal = get(m_ullExecUsTotal);
+	out.execUsMax = m_ullExecUsMax.exchange(0, std::memory_order_relaxed);
+
+	out.queued = out.pushed >= taken + mainDone ? out.pushed - taken - mainDone : 0;
+	out.copied = taken >= copyDone ? taken - copyDone : 0;
+	out.results = resultPushed >= resultPopped ? resultPushed - resultPopped : 0;
+
+	const int64_t now = SQLStatsClock();
+	const int64_t copyHead = m_llCopyHeadMs.load(std::memory_order_relaxed);
+	const int64_t mainHead = m_llMainHeadMs.load(std::memory_order_relaxed);
+	const int64_t oldest = copyHead ? copyHead : mainHead;	// FIFO: the copy queue's head is older than the main queue's
+	out.oldestAgeMs = oldest && now > oldest ? now - oldest : 0;
+	const int64_t stuck = m_llStuckSinceMs.load(std::memory_order_relaxed);
+	out.stuckMs = stuck && now > stuck ? now - stuck : 0;
+	out.unexecutedAtQuit = get(m_ullUnexecutedAtQuit);
 }
 
 CAsyncSQL::~CAsyncSQL()
@@ -112,6 +231,7 @@ bool CAsyncSQL::Setup(const char* c_pszHost, const char* c_pszUser, const char* 
 	m_stPassword = c_pszPassword;
 	m_stDB = c_pszDB;
 	m_iPort = iPort;
+	m_bConfigured.store(true, std::memory_order_relaxed);
 
 	if (c_pszLocale)
 	{
@@ -121,6 +241,8 @@ bool CAsyncSQL::Setup(const char* c_pszHost, const char* c_pszUser, const char* 
 
 	if (!bNoThread)
 	{
+		m_bThreaded = true;
+
 		// Create worker thread using modern C++ thread
 		m_thread = std::make_unique<std::thread>([this]() {
 			if (!Connect())
@@ -145,6 +267,9 @@ void CAsyncSQL::Quit()
 	{
 		m_thread->join();
 		m_thread.reset();
+
+		// The worker has stopped: whatever is still in its copy queue was never executed (telemetry only)
+		m_ullUnexecutedAtQuit.store(m_queue_query_copy.size(), std::memory_order_relaxed);
 	}
 }
 
@@ -154,6 +279,7 @@ std::unique_ptr<SQLMsg> CAsyncSQL::DirectQuery(const char* c_pszQuery)
 	if (m_ulThreadID.load(std::memory_order_acquire) != currentThreadID)
 	{
 		sys_err("MySQL connection was reconnected. querying locale set");
+		NoteThreadIdSeen();
 		while (!QueryLocaleSet());
 		m_ulThreadID.store(currentThreadID, std::memory_order_release);
 	}
@@ -162,6 +288,9 @@ std::unique_ptr<SQLMsg> CAsyncSQL::DirectQuery(const char* c_pszQuery)
 	p->m_pkSQL = &m_hDB;
 	p->iID = m_iMsgCount.fetch_add(1, std::memory_order_acq_rel) + 1;
 	p->stQuery = c_pszQuery;
+
+	const int64_t llStartMs = SQLStatsClock();
+	bool bFailed = false;
 
 	if (mysql_real_query(&m_hDB, p->stQuery.c_str(), p->stQuery.length()))
 	{
@@ -172,7 +301,13 @@ std::unique_ptr<SQLMsg> CAsyncSQL::DirectQuery(const char* c_pszQuery)
 
 		sys_err(buf);
 		p->uiSQLErrno = mysql_errno(&m_hDB);
+		bFailed = true;
+		NoteAttemptFailed(p->uiSQLErrno);
 	}
+
+	// Coarse (clock granularity, a few ms): enough to see DirectQuery calls that hold the calling loop
+	const int64_t llElapsedMs = SQLStatsClock() - llStartMs;
+	NoteCompleted(p.get(), bFailed, llElapsedMs > 0 ? static_cast<uint64_t>(llElapsedMs) * 1000 : 0);
 
 	p->Store();
 	return p;
@@ -184,6 +319,7 @@ void CAsyncSQL::AsyncQuery(const char* c_pszQuery)
 	p->m_pkSQL = &m_hDB;
 	p->iID = m_iMsgCount.fetch_add(1, std::memory_order_acq_rel) + 1;
 	p->stQuery = c_pszQuery;
+	p->llEnqueueMs = SQLStatsClock();
 
 	PushQuery(std::move(p));
 }
@@ -196,6 +332,7 @@ void CAsyncSQL::ReturnQuery(const char* c_pszQuery, void* pvUserData)
 	p->stQuery = c_pszQuery;
 	p->bReturn = true;
 	p->pvUserData = pvUserData;
+	p->llEnqueueMs = SQLStatsClock();
 
 	PushQuery(std::move(p));
 }
@@ -204,6 +341,7 @@ void CAsyncSQL::PushResult(std::unique_ptr<SQLMsg> p)
 {
 	std::lock_guard<std::mutex> lock(m_mtxResult);
 	m_queue_result.push(std::move(p));
+	Bump(m_ullResultPushed);
 }
 
 bool CAsyncSQL::PopResult(std::unique_ptr<SQLMsg>& p)
@@ -215,6 +353,7 @@ bool CAsyncSQL::PopResult(std::unique_ptr<SQLMsg>& p)
 
 	p = std::move(m_queue_result.front());
 	m_queue_result.pop();
+	Bump(m_ullResultPopped);
 	return true;
 }
 
@@ -228,6 +367,7 @@ bool CAsyncSQL::PopResult(SQLMsg** pp)
 
 	*pp = m_queue_result.front().release();
 	m_queue_result.pop();
+	Bump(m_ullResultPopped);
 	return true;
 }
 
@@ -235,7 +375,10 @@ void CAsyncSQL::PushQuery(std::unique_ptr<SQLMsg> p)
 {
 	{
 		std::lock_guard<std::mutex> lock(m_mtxQuery);
+		if (m_queue_query.empty())
+			m_llMainHeadMs.store(p->llEnqueueMs, std::memory_order_relaxed);
 		m_queue_query.push(std::move(p));
+		Bump(m_ullPushed);
 	}
 	m_cvQuery.notify_one();
 }
@@ -278,11 +421,20 @@ int CAsyncSQL::CopyQuery()
 	if (m_queue_query.empty())
 		return -1;
 
+	// Telemetry: what moves now is newer than anything already in the copy queue; publish the copy head before
+	// clearing the main head so a collector never sees both empty while messages wait
+	if (m_queue_query_copy.empty())
+		m_llCopyHeadMs.store(m_queue_query.front()->llEnqueueMs, std::memory_order_relaxed);
+	const uint64_t ullMoved = m_queue_query.size();
+
 	while (!m_queue_query.empty())
 	{
 		m_queue_query_copy.push(std::move(m_queue_query.front()));
 		m_queue_query.pop();
 	}
+
+	Bump(m_ullTaken, ullMoved);
+	m_llMainHeadMs.store(0, std::memory_order_relaxed);
 
 	return static_cast<int>(m_queue_query_copy.size());
 }
@@ -361,6 +513,12 @@ class cProfiler
 			return static_cast<long>(duration.count() % 1000000);
 		}
 
+		uint64_t GetElapsedUs() const
+		{
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(m_end - m_start);
+			return duration.count() > 0 ? static_cast<uint64_t>(duration.count()) : 0;
+		}
+
 	private:
 		int m_nInterval;
 		std::chrono::steady_clock::time_point m_start;
@@ -370,6 +528,8 @@ class cProfiler
 void CAsyncSQL::ChildLoop()
 {
 	cProfiler profiler(500000); // 0.5 seconds
+
+	m_bWorkerRunning.store(true, std::memory_order_relaxed);
 
 	while (!m_bEnd.load(std::memory_order_acquire))
 	{
@@ -397,6 +557,7 @@ void CAsyncSQL::ChildLoop()
 			// Peek first, don't pop yet (for retry logic)
 			SQLMsg* p = m_queue_query_copy.front().get();
 			bool shouldRetry = false;
+			bool bFailed = false;
 
 			profiler.Start();
 
@@ -405,6 +566,7 @@ void CAsyncSQL::ChildLoop()
 			if (m_ulThreadID.load(std::memory_order_acquire) != currentThreadID)
 			{
 				sys_err("MySQL connection was reconnected. querying locale set");
+				NoteThreadIdSeen();
 				while (!QueryLocaleSet());
 				m_ulThreadID.store(currentThreadID, std::memory_order_release);
 			}
@@ -412,6 +574,8 @@ void CAsyncSQL::ChildLoop()
 			if (mysql_real_query(&m_hDB, p->stQuery.c_str(), p->stQuery.length()))
 			{
 				p->uiSQLErrno = mysql_errno(&m_hDB);
+				bFailed = true;
+				NoteAttemptFailed(p->uiSQLErrno);
 
 				sys_err("AsyncSQL: query failed: %s (query: %s errno: %d)",
 					mysql_error(&m_hDB), p->stQuery.c_str(), p->uiSQLErrno);
@@ -445,7 +609,12 @@ void CAsyncSQL::ChildLoop()
 
 			// If retry, don't pop - continue to next iteration
 			if (shouldRetry)
+			{
+				Bump(m_ullRetry);
+				if (m_llStuckSinceMs.load(std::memory_order_relaxed) == 0)
+					m_llStuckSinceMs.store(SQLStatsClock(), std::memory_order_relaxed);
 				continue;
+			}
 
 			// Log slow queries (> 0.5 seconds)
 			if (!profiler.IsOk())
@@ -457,6 +626,13 @@ void CAsyncSQL::ChildLoop()
 			// Now pop and move ownership
 			auto pMsg = std::move(m_queue_query_copy.front());
 			m_queue_query_copy.pop();
+
+			// Telemetry: before the result is published (PushResult) so its uiFinalErrno is set when the caller reads it
+			NoteCompleted(p, bFailed, profiler.GetElapsedUs());
+			Bump(m_ullCopyDone);
+			m_llStuckSinceMs.store(0, std::memory_order_relaxed);
+			m_llCopyHeadMs.store(m_queue_query_copy.empty() ? 0 : m_queue_query_copy.front()->llEnqueueMs,
+				std::memory_order_relaxed);
 
 			if (p->bReturn)
 			{
@@ -484,13 +660,21 @@ void CAsyncSQL::ChildLoop()
 			if (m_ulThreadID.load(std::memory_order_acquire) != currentThreadID)
 			{
 				sys_err("MySQL connection was reconnected. querying locale set");
+				NoteThreadIdSeen();
 				while (!QueryLocaleSet());
 				m_ulThreadID.store(currentThreadID, std::memory_order_release);
 			}
 
+			// Telemetry: taken straight from the main queue; executed once, never retried here (not timed)
+			Bump(m_ullMainDone);
+			bool bFailed = false;
+
 			if (mysql_real_query(&m_hDB, p->stQuery.c_str(), p->stQuery.length()))
 			{
 				p->uiSQLErrno = mysql_errno(&m_hDB);
+				bFailed = true;
+				NoteAttemptFailed(p->uiSQLErrno);
+				NoteCompleted(p, true, UINT64_MAX);
 
 				sys_err("AsyncSQL::ChildLoop : mysql_query error: %s:\nquery: %s",
 					mysql_error(&m_hDB), p->stQuery.c_str());
@@ -519,6 +703,9 @@ void CAsyncSQL::ChildLoop()
 
 			sys_log(0, "QUERY_FLUSH: %s", p->stQuery.c_str());
 
+			if (!bFailed)
+				NoteCompleted(p, false, UINT64_MAX);
+
 			if (p->bReturn)
 			{
 				p->Store();
@@ -527,7 +714,11 @@ void CAsyncSQL::ChildLoop()
 
 			m_iQueryFinished.fetch_add(1, std::memory_order_acq_rel);
 		}
+
+		m_llMainHeadMs.store(0, std::memory_order_relaxed);
 	}
+
+	m_bWorkerRunning.store(false, std::memory_order_relaxed);
 }
 
 int CAsyncSQL::CountQueryFinished() const

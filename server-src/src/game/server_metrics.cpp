@@ -1,21 +1,18 @@
 #include "stdafx.h"
 #include "server_metrics.h"
-#include "metrics_daily_sink.h"
 
 #include "config.h"
 #include "desc_manager.h"
 #include "char_manager.h"
-
-#include <spdlog/async_logger.h>
-#include <spdlog/details/thread_pool.h>
+#include "db.h"
+#include "log.h"
+#include "sql_metrics.h"
 
 #include <cstdio>
 
 #ifdef OS_WINDOWS
 #include <process.h>
 #else
-#include <pthread.h>
-#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -72,31 +69,9 @@ void CServerMetrics::Initialize()
 		return;
 	}
 
-	try
+	// Own queue and worker: never shares the syslog/syserr pool or another telemetry stream
+	if (!m_writer.Start("log", "metrics", METRICS_KEEP_DAYS, METRICS_QUEUE_SIZE))
 	{
-		m_sink = std::make_shared<metrics_daily_sink>("log", "metrics", METRICS_KEEP_DAYS);
-		m_sink->set_pattern("%Y-%m-%dT%H:%M:%S%z %v");
-
-		// Own queue and worker: never shares the syslog/syserr pool. The worker blocks every signal so the
-		// process signal handlers (SIGVTALRM checkpoint, SIGTERM, ...) keep running on the existing threads.
-		m_pool = std::make_shared<spdlog::details::thread_pool>(METRICS_QUEUE_SIZE, 1, []()
-		{
-#ifndef OS_WINDOWS
-			sigset_t all;
-			sigfillset(&all);
-			pthread_sigmask(SIG_BLOCK, &all, nullptr);
-#endif
-		});
-
-		m_logger = std::make_shared<spdlog::async_logger>("metrics", m_sink, m_pool, spdlog::async_overflow_policy::discard_new);
-		m_logger->set_level(spdlog::level::info);
-		m_logger->set_error_handler([](const std::string&) {}); // write failures are counted by the sink
-	}
-	catch (...)
-	{
-		m_logger.reset();
-		m_pool.reset();
-		m_sink.reset();
 		sys_err("METRICS: initialization failed, metrics disabled");
 		return;
 	}
@@ -109,31 +84,48 @@ void CServerMetrics::Initialize()
 
 	sys_log(0, "METRICS: enabled, every %d s to log/metrics_YYYY-MM-DD.log, kept %d days",
 		(int) METRICS_WINDOW.count(), METRICS_KEEP_DAYS);
+
+	StartSql(now);
+}
+
+void CServerMetrics::StartSql(Clock::time_point now)
+{
+	// Connections that were never set up on this core (e.g. LogManager on the auth core) report configured=0 and
+	// get no lines. Targets follow config_init: DBManager uses account_sql on the auth core and player_sql elsewhere;
+	// AccountDB uses common_sql (game/config.cpp).
+	const char* dbTarget = g_bAuthServer ? "account" : "player";
+	m_sql = std::make_unique<sql_metrics_reporter>();
+	m_sql->Add("dbmanager", dbTarget, "main", DBManager::instance().GetSQLForStats());
+	m_sql->Add("dbmanager", dbTarget, "direct", DBManager::instance().GetDirectSQLForStats());
+	m_sql->Add("accountdb", "common", "main", AccountDB::instance().GetSQLForStats());
+	m_sql->Add("accountdb", "common", "direct", AccountDB::instance().GetDirectSQLForStats());
+	m_sql->Add("logmanager", "log", "main", LogManager::instance().GetSQLForStats());
+
+	if (!m_sqlWriter.Start("log", "sql", METRICS_KEEP_DAYS, METRICS_QUEUE_SIZE))
+	{
+		sys_err("METRICS: SQL stream initialization failed, SQL lines disabled");
+		return;
+	}
+
+	m_sql->Start(now);
+	sys_log(0, "METRICS: SQL lines every %d s to log/sql_YYYY-MM-DD.log", (int) METRICS_WINDOW.count());
 }
 
 void CServerMetrics::Shutdown()
 {
-	if (!m_logger)
+	if (!m_writer.IsRunning())
 		return;
 
 	const Clock::time_point now = Clock::now();
 	if (m_bEnabled && now - m_windowStart >= std::chrono::seconds(1))
 		Emit(now); // last partial window before exit
 
+	if (m_bEnabled)
+		EmitSql(now, true);
+
 	m_bEnabled = false;
-
-	try
-	{
-		m_logger->flush();
-	}
-	catch (...)
-	{
-	}
-
-	// Release the logger first, then the pool: the pool destructor drains the queue and joins its worker.
-	m_logger.reset();
-	m_pool.reset();
-	m_sink.reset();
+	m_writer.Stop();
+	m_sqlWriter.Stop();
 }
 
 void CServerMetrics::ResetWindow(Clock::time_point now)
@@ -186,6 +178,7 @@ void CServerMetrics::BeginIteration(int iPassedPulses)
 	if (now - m_windowStart >= METRICS_WINDOW)
 	{
 		Emit(now);
+		EmitSql(now, false);
 
 		// Building and queueing the line is work of this iteration, but no game section's: restart the section
 		// clock so it shows in other_us instead of the next event_us (one extra clock read per window)
@@ -286,21 +279,26 @@ void CServerMetrics::Emit(Clock::time_point now)
 		ToMicroseconds(m_event), ToMicroseconds(m_heartbeat), ToMicroseconds(m_character),
 		ToMicroseconds(m_io), ToMicroseconds(other),
 		(unsigned long long) m_events, (unsigned long long) m_sentBytes,
-		(unsigned long long) (m_pool ? m_pool->discard_counter() : 0),
-		(unsigned long long) (m_sink ? m_sink->GetWriteErrors() : 0));
+		m_writer.Dropped(), m_writer.WriteErrors());
 
 	ResetWindow(now);
 
-	if (len <= 0 || !m_logger)
+	if (len <= 0)
 		return;
 
 	const size_t length = (size_t) len < sizeof(line) ? (size_t) len : sizeof(line) - 1;
+	m_writer.Write(line, length);
+}
 
-	try
-	{
-		m_logger->log(spdlog::level::info, spdlog::string_view_t(line, length));
-	}
-	catch (...)
-	{
-	}
+void CServerMetrics::EmitSql(Clock::time_point now, bool bFinal)
+{
+	if (!m_sqlWriter.IsRunning() || !m_sql)
+		return;
+
+	char host[64];
+	CopySafeValue(host, sizeof(host), g_stHostname);
+
+	// The game's SQL connections are closed after the log is shut down (game/main.cpp), so what they leave
+	// unexecuted cannot be counted: game lines never carry unexecuted_at_quit
+	m_sql->Window(now, host, CurrentProcessId(), m_sqlWriter, "", bFinal, false);
 }

@@ -8,6 +8,7 @@ Read-only. Python 3 standard library only.
     python3 m2metrics.py --dir /path/to/channels --host channel1_1
     python3 m2metrics.py --raw --hours 1       # print the matching lines instead of a summary
     python3 m2metrics.py --dbstat /var/log/m2dev-metrics --hours 24   # MariaDB/OS/process lines of m2dev-dbstat
+    python3 m2metrics.py --sql --hours 24      # SQL queue/error lines (log/sql_*.log) of game cores and db
 
 Fields are read by name (key=value), never by position, so new fields do not break this tool.
 """
@@ -57,16 +58,66 @@ def parse_line(line):
     return rec if "host" in rec else None
 
 
-def find_files(base, days):
+def find_files(base, days, prefix="metrics"):
     pattern_dirs = [os.path.join(base, "log"), os.path.join(base, "*", "log"), os.path.join(base, "*", "*", "log")]
     wanted = {(datetime.now() - timedelta(days=d)).strftime("%Y-%m-%d") for d in range(days + 1)}
     files = []
     for d in pattern_dirs:
-        for path in glob.glob(os.path.join(d, "metrics_*.log")):
-            day = os.path.basename(path)[len("metrics_"):-len(".log")]
+        for path in glob.glob(os.path.join(d, prefix + "_*.log")):
+            day = os.path.basename(path)[len(prefix) + 1:-len(".log")]
             if day in wanted:
                 files.append(path)
     return sorted(set(files))
+
+
+SQL_ERRNOS = ("e2006", "e2013", "e2014", "e1205", "e1213", "e_other")
+SQL_SAVES = ("save_player", "save_item", "destroy_item", "save_quest", "save_safebox", "award_taken")
+
+
+def summarise_sql(lines, conn_limit):
+    """SQL lines (docs/monitoring.md -> SQL (sql_*.log)): kind=sum has window deltas, kind=conn cumulative *_total."""
+    by_host = defaultdict(list)
+    for r in lines:
+        by_host[r.get("host", "?")].append(r)
+
+    for host in sorted(by_host):
+        rows = sorted(by_host[host], key=lambda r: r["ts"])
+        sums = [r for r in rows if r.get("kind") == "sum"]
+        conns = [r for r in rows if r.get("kind") == "conn"]
+        if not sums:
+            continue
+        total = lambda f: sum(num(r.get(f)) or 0 for r in sums)
+        worst = lambda f: max((num(r.get(f)) or 0 for r in sums), default=0)
+        pids = []
+        for r in sums:
+            if not pids or pids[-1] != r.get("pid"):
+                pids.append(r.get("pid"))
+        exec_n = total("exec_n")
+        print(f"== {host}  {sums[0]['ts']:%Y-%m-%d %H:%M:%S} .. {sums[-1]['ts']:%H:%M:%S}  windows={len(sums)}  "
+              f"process starts seen={len(pids)}  connections={sums[-1].get('conns')}")
+        print(f"   queued {total('pushed')}, ok {total('ok')}, err {total('err')} (not applied), retry {total('retry')}, "
+              f"reconnect_seen {total('reconnect_seen')}; errno " + ", ".join(f"{e} {total(e)}" for e in SQL_ERRNOS))
+        print(f"   exec avg {(total('exec_us') / exec_n / 1000) if exec_n else 0:.2f} ms, max {worst('exec_max_us') / 1000:.1f} ms; "
+              f"direct {total('direct_n')} (err {total('direct_err')}, max {worst('direct_max_ms')} ms)")
+        print(f"   worst: q {worst('q')}, cq {worst('cq')}, oldest {worst('oldest_ms_max')} ms, "
+              f"{sum(1 for r in sums if (num(r.get('stuck_conns')) or 0) > 0)} window(s) with a stuck connection, "
+              f"workers_down max {worst('workers_down')}; metrics_dropped {sums[-1].get('metrics_dropped')}, "
+              f"metrics_write_errors {sums[-1].get('metrics_write_errors')} (since process start)")
+        if any(f"{k}_ok" in sums[-1] for k in SQL_SAVES):
+            print("   SAVE results (reached AnalyzeQueryResult; err = statement not applied, not proof of data loss): "
+                  + ", ".join(f"{k} {total(k + '_ok')}/{total(k + '_err')} ok/err" for k in SQL_SAVES))
+        anomalies = [r for r in conns if r.get("reason") == "anomaly"]
+        print(f"   connection lines: {len(conns)} ({len(anomalies)} anomaly)")
+        for r in anomalies[-conn_limit:]:
+            print(f"     {r['ts']:%Y-%m-%d %H:%M:%S}  {r.get('owner')}/{r.get('target')}/{r.get('role')}  q={r.get('q')} "
+                  f"cq={r.get('cq')} oldest_ms={r.get('oldest_ms')} stuck_ms={r.get('stuck_ms')} worker={r.get('worker')} "
+                  f"err_total={r.get('err_total')} retry_total={r.get('retry_total')} "
+                  f"reconnect_seen_total={r.get('reconnect_seen_total')}")
+        for r in conns:
+            if r.get("reason") == "final" and r.get("unexecuted_at_quit") not in (None, "0"):
+                print(f"     final {r['ts']:%Y-%m-%d %H:%M:%S}  {r.get('owner')}/{r.get('target')}/{r.get('role')}  "
+                      f"unexecuted_at_quit={r.get('unexecuted_at_quit')} (never executed; not proof of data loss)")
+        print()
 
 
 def fmt_bytes(n):
@@ -197,6 +248,7 @@ def main():
     ap.add_argument("--lags", type=int, default=10, help="late windows to list per host (default 10)")
     ap.add_argument("--raw", action="store_true", help="print matching lines instead of a summary")
     ap.add_argument("--dbstat", metavar="DIR", help="summarise m2dev-dbstat files in DIR (e.g. /var/log/m2dev-metrics)")
+    ap.add_argument("--sql", action="store_true", help="summarise SQL lines (log/sql_*.log) under --dir instead of health lines")
     args = ap.parse_args()
 
     since = datetime.now(timezone.utc) - timedelta(hours=args.hours)
@@ -224,6 +276,33 @@ def main():
                 return 1
             summarise_dbstat(lines)
         return 0
+    if args.sql:
+        lines = []
+        for path in find_files(args.dir, int(args.hours // 24) + 1, "sql"):
+            with open(path, encoding="utf-8", errors="replace") as fp:
+                for line in fp:
+                    parts = line.split()
+                    try:
+                        ts = datetime.strptime(parts[0], "%Y-%m-%dT%H:%M:%S%z")
+                    except (IndexError, ValueError):
+                        continue
+                    if ts < since:
+                        continue
+                    rec = {"ts": ts}
+                    rec.update(p.split("=", 1) for p in parts[1:] if "=" in p)
+                    if args.host and rec.get("host") != args.host:
+                        continue
+                    if args.raw:
+                        sys.stdout.write(line)
+                    else:
+                        lines.append(rec)
+        if not args.raw:
+            if not lines:
+                print(f"no SQL lines in the last {args.hours:g} h under {args.dir}", file=sys.stderr)
+                return 1
+            summarise_sql(lines, args.lags)
+        return 0
+
     files = find_files(args.dir, int(args.hours // 24) + 1)
     if not files:
         print(f"no metrics files under {args.dir}", file=sys.stderr)
