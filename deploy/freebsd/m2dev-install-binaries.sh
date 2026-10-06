@@ -7,8 +7,10 @@
 # Policies (fail closed; production is the default):
 #   production  src=git, dirty=0, a real commit. Nothing else.
 #   test-vm     also src=archive with dirty=0 (exported source; changes after extraction cannot be seen).
-#   dev         any well-formed identity (dirty, injected, unknown), recorded as policy=dev.
-# Every policy requires: exactly one well-formed marker per binary, game and db built from the same identity
+#   dev         any well-formed, consistent identity (dirty, injected, none), recorded as policy=dev.
+# Every policy requires: exactly one well-formed marker per binary whose fields agree with its source type
+# (git: 40-hex commit, dirty 0|1; archive: 40-hex, dirty 0; injected: 40-hex; none: commit and dirty unknown),
+# game and db built from the same identity
 # (commit, dirty, src), and no game/db process running from the target directory. Stopping and starting the
 # server is NOT done here (docs/build-and-run.md: stop -> m2dev-backup consistent -> install -> start).
 #
@@ -56,6 +58,13 @@ marker() {
 	field() { printf '%s' "$lines" | sed -n "s/.*|$1=\([^|]*\)|.*/\1/p"; }
 	[ "$(field component)" = "$2" ] || die "$1: marker says component=$(field component), expected $2"
 	M_COMMIT=$(field commit); M_DIRTY=$(field dirty); M_SRC=$(field src); M_DESCRIBE=$(field describe)
+	# Fields must agree with the source type, exactly as BuildIdentity.cmake produces them; the syntax check above
+	# alone would let e.g. commit=unknown pass as src=git
+	case "$M_SRC|$M_COMMIT|$M_DIRTY" in
+		git\|unknown\|*|archive\|unknown\|*|injected\|unknown\|*) die "$1: src=$M_SRC requires a real commit, got commit=$M_COMMIT" ;;
+		git\|*\|0|git\|*\|1|archive\|*\|0|injected\|*\|0|injected\|*\|1|injected\|*\|unknown|none\|unknown\|unknown) ;;
+		*) die "$1: inconsistent marker: src=$M_SRC commit=$M_COMMIT dirty=$M_DIRTY" ;;
+	esac
 }
 marker "$NEW_GAME" game
 G_COMMIT=$M_COMMIT; G_DIRTY=$M_DIRTY; G_SRC=$M_SRC; G_DESCRIBE=$M_DESCRIBE
@@ -63,6 +72,8 @@ marker "$NEW_DB" db
 [ "$M_COMMIT|$M_DIRTY|$M_SRC" = "$G_COMMIT|$G_DIRTY|$G_SRC" ] \
 	|| die "game and db are not from the same build: game commit=$G_COMMIT dirty=$G_DIRTY src=$G_SRC, db commit=$M_COMMIT dirty=$M_DIRTY src=$M_SRC"
 
+# Independent of the consistency check: no policy that installs onto a server accepts an unknown commit
+[ "$POLICY" = dev ] || [ "$G_COMMIT" != unknown ] || die "policy $POLICY never accepts commit=unknown"
 case "$POLICY" in
 	production) [ "$G_SRC" = "git" ] && [ "$G_DIRTY" = "0" ] || die "production accepts only src=git dirty=0 (got src=$G_SRC dirty=$G_DIRTY)" ;;
 	test-vm) { [ "$G_SRC" = "git" ] || [ "$G_SRC" = "archive" ]; } && [ "$G_DIRTY" = "0" ] \

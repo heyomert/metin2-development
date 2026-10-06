@@ -27,6 +27,6 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-06 | [AsyncSQL davranış baseline'ı: hata enjeksiyonu testleri (DB adım 1a)](2026-10-06-asyncsql-baseline.md) | karar / ortam | server-src / tools | Aktif | #14 |
 | 2026-10-06 | [MariaDB + OS toplayıcısı `m2dev-dbstat` (DB adım 1b); süreç CPU'su ms'ye kesilince kayboluyordu](2026-10-06-dbstat-collector.md) | özellik / karar / ortam | runtime / tools | Aktif | #15 |
 | 2026-10-06 | [AsyncSQL kuyruk/bekleme/hata sayaçları (DB adım 1c); cache flush SAVE'leri peer'siz erken dönüşe düşüyor; `uiSQLErrno` tekrar sonrası temizlenmiyor](2026-10-06-sql-counters.md) | özellik / karar / ortam | server-src / runtime / tools | Aktif | #17 |
-| 2026-10-06 | [Derleme kimliği ve game+db kurulumu (T-2); yanlış pathspec, yok sayılan-derlenen kaynak, FreeBSD make saniye çözünürlüğü](2026-10-06-build-identity.md) | özellik / karar / ortam | server-src / build / runtime / tools | Aktif | — |
+| 2026-10-06 | [Derleme kimliği ve game+db kurulumu (T-2); yanlış pathspec, yok sayılan-derlenen kaynak, FreeBSD make saniye çözünürlüğü](2026-10-06-build-identity.md) | özellik / karar / ortam | server-src / build / runtime / tools | Aktif | #20 |
 
 <!-- Eski yıllar: README-<yıl>.md -->

@@ -147,7 +147,12 @@ değiştiyse sadece iki `version.cpp` derlenir (ölçüldü). Kaynak, ilk uyan:
 | `archive` | ✓ | ✓ | ✗ |
 | `injected` | ✓ + uyarı | sadece `--policy dev` | ✗ |
 | `none` / `unknown` | ✓ + CMake uyarısı | sadece `--policy dev` | ✗ |
-| işaret yok/bozuk/çift, game ≠ db (commit/dirty/src), hedeften çalışan game/db süreci | — | ✗ | ✗ |
+| işaret yok/bozuk/çift, alanları `src` ile tutarsız, game ≠ db (commit/dirty/src), hedeften çalışan game/db süreci | — | ✗ (`dev` dahil) | ✗ |
+
+İşaretin alanları kaynak türüyle tutarlı olmalı, `BuildIdentity.cmake`'in ürettiği gibi: `git` → 40 hex commit, `dirty`
+`0|1`; `archive` → 40 hex, `dirty=0`; `injected` → 40 hex; `none` → `commit=unknown dirty=unknown`. Sözdizimi tek başına
+yetmez (ör. `src=git commit=unknown` biçimce geçerli ama tutarsız; her politikada reddedilir). `test-vm` ve `production`
+`commit=unknown`'ı ayrıca, tutarlılık kontrolünden bağımsız olarak da reddeder.
 
 Her politikada: iki binary önce tamamen doğrulanır (hiçbir dosyaya dokunmadan), sonra aşama → mevcut çifti yedekle
 (`share/bin/.prev.<zaman>.<pid>`) → `rename` → SHA-256 doğrula → `share/bin/BUILD` + `/var/db/m2dev/deploy.log`. İkinci dosya,

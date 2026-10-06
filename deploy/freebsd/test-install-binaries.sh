@@ -112,6 +112,30 @@ refused "test-vm + src=injected" --policy test-vm "$W/in/game" "$W/in/db"
 run --policy dev "$W/in/game" "$W/in/db" && tail -1 "$W/deploy.log" | grep -q 'result=installed policy=dev .*src=injected' \
 	&& ok "dev accepts src=injected, recorded as policy=dev" || bad "dev policy: $(cat "$W/out.txt")"
 
+echo "9. marker fields must agree with the source type (syntax alone is not enough)"
+inconsistent() { # policy src commit dirty: refused for the consistency reason, under every policy
+	fake "$W/in/game" game $3 $4 $2; fake "$W/in/db" db $3 $4 $2
+	refused "--policy $1 + src=$2 commit=$3 dirty=$4" --policy $1 "$W/in/game" "$W/in/db"
+	grep -Eq 'requires a real commit|inconsistent marker' "$W/out.txt" || bad "  ...refused for another reason: $(cat "$W/out.txt")"
+}
+inconsistent production git unknown 0
+inconsistent test-vm archive unknown 0
+inconsistent dev git unknown 0
+inconsistent dev archive unknown 0
+inconsistent dev injected unknown 0
+inconsistent dev git $C2 unknown
+inconsistent dev archive $C2 1
+inconsistent dev archive $C2 unknown
+inconsistent dev none $C2 unknown
+inconsistent dev none unknown 0
+inconsistent dev none $C2 0
+fake "$W/in/game" game unknown unknown none; fake "$W/in/db" db unknown unknown none
+refused "test-vm + src=none commit=unknown" --policy test-vm "$W/in/game" "$W/in/db"
+run --policy dev "$W/in/game" "$W/in/db" && tail -1 "$W/deploy.log" | grep -q 'result=installed policy=dev commit=unknown dirty=unknown src=none' \
+	&& ok "dev accepts the consistent src=none commit=unknown dirty=unknown" || bad "dev refused src=none: $(cat "$W/out.txt")"
+fake "$W/in/game" game $C2 unknown injected; fake "$W/in/db" db $C2 unknown injected
+run --policy dev "$W/in/game" "$W/in/db" && ok "dev accepts src=injected dirty=unknown (no -DM2_BUILD_DIRTY)" || bad "dev refused injected dirty=unknown: $(cat "$W/out.txt")"
+
 echo
 [ $FAIL -eq 0 ] && echo "PASSED" || echo "FAILED ($FAIL)"
 exit $FAIL

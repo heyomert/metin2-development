@@ -4,7 +4,7 @@
 - **Tür:** özellik / karar / ortam
 - **Alan:** server-src / build / runtime / tools
 - **Durum:** Aktif
-- **PR / commit:** —
+- **PR / commit:** [#20](https://github.com/heyomert/metin2-development/pull/20)
 
 ## Problem / hedef
 Hangi binary/commit'in çalıştığı kesin bilinmiyordu: game hiçbir zaman sürüm yazmıyordu, db `db revision: unknown`. AsyncSQL
@@ -32,6 +32,11 @@ fail-closed. Kullanım: `docs/build-and-run.md` → "Derleme kimliği ve kurulum
   `tar -m` olmadan açılan kaynaklar "gelecekte" kalıp her derlemede yeniden derlendi. Açma `tar -xzmf`.
 - **Tekrar üretilemiyor (ölçüldü):** aynı arşiv iki dizinde → game/db SHA-256 farklı; binary'ler mutlak kaynak yolu taşıyor
   (game'de 123). Dosya ↔ kimlik bağı `deploy.log` ile; `-ffile-prefix-map` ileride bir seçenek.
+- **Sözdizimi ≠ anlam (incelemede bulundu):** installer'ın regex'i `commit=unknown`'ı her `src` için geçerli sayıyordu;
+  production sadece `src=git dirty=0`'a baktığı için `src=git commit=unknown dirty=0` işareti production'dan,
+  `src=archive commit=unknown dirty=0` test-vm'den geçebilirdi (üretici bunu üretmez, ama installer üreticiye güvenmemeli).
+  İşaret alanları artık `src` ile tutarlılık için ayrıca doğrulanıyor; `test-vm`/`production` `commit=unknown`'ı ayrıca
+  reddediyor.
 - **FreeBSD `mv`** hedef dizinse içine taşır ve başarılı döner → installer hedefte dizini reddeder. FreeBSD `sh`'ta `$RANDOM`
   yok.
 
@@ -61,7 +66,8 @@ kur → SHA → `BUILD`/`deploy.log`, her adımda geri alma; production sadece `
 - `deploy/freebsd/test-install-binaries.sh` (VM, korumalı dizin): PASS — production'da archive/injected/none/dirty reddi;
   işaret yok/bozuk/çift/yanlış bileşen; game≠db commit ve aynı commit+biri dirty; çalışan süreç; ikinci `rename` hatasında
   ve kanıt kaydı yazılamadığında eski çiftin birebir dönmesi, `installed` satırı yok; başarıda SHA ↔ `BUILD` ↔ `deploy.log`,
-  modlar `755/755/644/640`, herkese yazılabilir yok. Gerçek ELF'lerle: production archive'ı reddetti, test-vm kurdu,
+  modlar `755/755/644/640`, herkese yazılabilir yok; alanları `src` ile tutarsız 11 işaret (`dev` politikası dahil) doğru
+  gerekçeyle reddedildi ve çift değişmedi, tutarlı `none` ve `injected dirty=unknown` `dev`'de kabul edildi. Gerçek ELF'lerle: production archive'ı reddetti, test-vm kurdu,
   `prev_game_sha256` = değiştirilen 1c binary'si.
 - `tools/metrics/test_m2metrics.py`: gerçek eski satırlar okunuyor; yeni satırlar derlemeyi gösteriyor; dönem içi değişiklik
   listeleniyor; mevcut alanlar değişmiyor.
