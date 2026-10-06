@@ -4,7 +4,7 @@
 - **Tür:** özellik / karar / ortam
 - **Alan:** runtime / db / tools
 - **Durum:** Aktif
-- **PR / commit:** —
+- **PR / commit:** https://github.com/heyomert/metin2-development/pull/15
 
 ## Problem / hedef
 Bugünkü karışık Aria/MyISAM/InnoDB yapısının MariaDB ve işletim sistemi tarafını ölçmek; AsyncSQL düzeltmesi ve InnoDB
