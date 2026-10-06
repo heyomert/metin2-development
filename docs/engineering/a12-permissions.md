@@ -29,8 +29,8 @@ Derleme kaynağı `/usr/local/m2dev-acceptance/server-src`: 1.585 öğenin 1.582
 2. **Aktarım arşivi `/root/m2dev-server-snapshot.tar.gz` (Kanıtlı).** VM'de 16:52:04'te oluştu, ağaç 16:52:05'te açıldı;
    gzip başlığındaki sıkıştırma zamanı 16:49:26. İçindeki modlar sadece `0666`, `0777`, `0777` (`.exe`). (İlk sürüm bunu
    "sonradan alınmış anlık görüntü" diye yanlış adlandırmıştı.)
-3. **Arşivi üreten araç: libarchive / Windows `tar.exe` (Kanıtlı, parmak izi).** Aynı dosyalar dört araçla arşivlenip
-   karşılaştırıldı:
+3. **Arşivin parmak izi: Windows'ta libarchive biçimi (Kanıtlı); üreten araç kesin bağlanmıyor.** Aynı dosyalar dört araçla
+   arşivlenip karşılaştırıldı:
 
    | | gzip OS baytı | tar başlığı | uid / kullanıcı adı | mod alanı | modlar |
    |---|---|---|---|---|---|
@@ -40,13 +40,17 @@ Derleme kaynağı `/usr/local/m2dev-acceptance/server-src`: 1.585 öğenin 1.582
    | FreeBSD `tar` (libarchive, Unix) | 3 | `ustar\0` `00` | 0 / **`root`** | `000666 ` | diskteki modlar |
    | Python `tarfile` | 255 | `ustar\0` `00` | 0 / boş | farklı | — |
 
-   Biçim libarchive'e özgü; **boş kullanıcı adı** (Unix'teki libarchive `root` yazar) ve NTFS kaynaklı `0666`/`0777` modları
-   Windows'u gösteriyor. Test edilen araçlar içinde yalnız Windows `tar.exe` birebir uyuşuyor; test edilmeyen başka Windows
-   araçları dışlanmadı. **Komutu kimin çalıştırdığı kayıtlı değil (Unverified).**
+   - **Kanıtlı:** biçim libarchive'e özgü; **boş kullanıcı adı** (Unix'teki libarchive `root` yazar) ve NTFS kaynaklı
+     `0666`/`0777` mod deseni Windows'u gösteriyor.
+   - **Kanıtlı:** test edilen araçlar içinde arşivle birebir uyuşan yalnız Windows `tar.exe` (libarchive).
+   - **Kesin bağlanmıyor:** ilk arşivi tam olarak hangi programın ürettiği; aynı çıktıyı verebilecek, test edilmemiş Windows
+     araçları (libarchive kullanan başka programlar dahil) dışlanamadı.
+   - **Unverified:** arşivi kimin, hangi komutla oluşturduğu.
 4. **FreeBSD `tar` root olarak açarken arşivdeki modları umask uygulamadan korur** (bsdtar, root için `-p` varsayılan) →
    modlar olduğu gibi kaldı. VM'de sonradan oluşan her şey (kanal dizinleri, quest çıktısı, log'lar) root'un umask'ıyla
    `644`/`755`; ayrım bunu doğruluyor.
-5. **Kim ve hangi komutla (Unverified).** Araç ve zaman kanıtlı; çalıştıran kişi ya da otomasyon kayıtlı değil.
+5. **Kim ve hangi komutla (Unverified).** Zaman ve arşivin Windows/libarchive parmak izi kanıtlı; üreten program kesin
+   bağlanmıyor (3. madde); çalıştıran kişi ya da otomasyon kayıtlı değil.
 
 ### `perms.py`'nin payı (Kanıtlı, `server/perms.py`)
 `perms.py` ağacın izinlerini **açıklamaz**; sadece şunları değiştirir:
