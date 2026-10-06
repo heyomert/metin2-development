@@ -110,6 +110,28 @@ Yönetim servisi  ← panelin konuştuğu TEK yer
   (ayarlar DB'de ya da yeniden yüklenebilir config'te, sistem log üretir, gerekirse komut kanalına komut eklenir).
   Panel uygulaması sonra gelir (`docs/roadmap.md` Faz 3).
 
+### Kontrol katmanı ilkeleri (2026-10-06, kullanıcıyla)
+Panel sadece oyuncu/hesap işlemleri için değil, operasyonun tek yerden görüldüğü kontrol merkezi olacak (oyun süreçleri,
+MariaDB, AsyncSQL, yedek, restore testi, servisler, disk, sürüm). Bu ilkeler bugün yazılan altyapı için de geçerlidir:
+1. **Runtime bağımlılığı yok.** Panel ya da yönetim servisi kapanırsa, çökerse, erişilemezse ya da ele geçirilmeye
+   çalışılırsa game, db, MariaDB, yedek ve monitoring aynen çalışmaya devam eder. Hiçbir kritik iş onları beklemez, onlara
+   bağlanmaz. Bugünkü telemetri bu kurala uyuyor: süreçler dosyaya yazar, okuyan kim olursa olsun yazan etkilenmez.
+2. **Önce salt okuma, sonra kontrollü aksiyon.** İlk sürüm sadece gözlemler.
+3. **Aksiyonlar sadece önceden tanımlı ve yetkili işlemler.** Root shell, serbest SQL, sınırsız sistem komutu yüzeyi yok.
+   Her işlem: tanımlı parametreler, yetki, işlem kaydı (kim, ne zaman, neden, sonuç), hız sınırı.
+4. **Yıkıcı işlemler buton değildir.** Production restore gibi işlemler ayrı tören ister: bakım modu, ikinci onay,
+   doğrulama, işlem kaydı. Panelden "başlatılamaz" da olabilir; Faz 3 tasarımında karar verilir.
+5. **"Kapat" yerine süreli duraklatma.** Yedek gibi koruyucu bir sistem kapatılacaksa: bitiş zamanı (kendiliğinden geri
+   açılır), neden, kim. Unutulup kapalı kalamaz.
+6. **En az yetkiyle okuma.** Okuyucu root değildir; telemetri ve durum dosyalarını salt-okuma grubuyla okur. Hassas veri
+   (şifre, gizli bilgi, oyuncu kişisel bilgisi, SQL metni) teşhis yüzeyine taşınmaz.
+7. **Panel ve agent aynı veri kaynağını kullanır.** Olay sırasında agent'ın teşhis için okuduğu ile panelin gösterdiği
+   aynı makinece okunur, yetkili kaynaktır (`docs/monitoring.md` → "Telemetri sözleşmesi", "Olay teşhisi"). Agent'a
+   sınırsız production erişimi verilmez.
+8. **Oyunun mevcut düz metin yönetim kanalı** (`game/input.cpp:240-490`) canlı işlemler için aday ama bilinen sorunları
+   var (K-3, A-11: bazı komutlar yönetici kontrolünden önce işleniyor, şifrelenmemiş). Faz 3'te ya sadece localhost'tan ve
+   izin listesindeki komutlarla kullanılır ya da kimlik doğrulamalı bir kanalla değiştirilir; karar o tasarımda.
+
 ## Yol sınıflandırması
 
 | Yol ailesi | Sınıf | Not |
