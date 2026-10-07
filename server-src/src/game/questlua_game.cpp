@@ -76,7 +76,7 @@ namespace quest
 	{
 		CQuestManager& q = CQuestManager::instance();
 		LPCHARACTER ch = q.GetCurrentCharacterPtr();
-		ch->SetSafeboxOpenPosition();
+		ch->SetSafeboxOpenIntent();
 		ch->ChatPacket(CHAT_TYPE_COMMAND, "ShowMeSafeboxPassword");
 		return 0;
 	}
@@ -85,7 +85,8 @@ namespace quest
 	{
 		CQuestManager& q = CQuestManager::instance();
 		LPCHARACTER ch = q.GetCurrentCharacterPtr();
-		ch->SetSafeboxOpenPosition();
+		// No safebox intent: /mall_password has no position check, and the item shop storeroom must not open the
+		// normal safebox (A-23)
 		ch->ChatPacket(CHAT_TYPE_COMMAND, "ShowMeMallPassword");
 		return 0;
 	}

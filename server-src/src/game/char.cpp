@@ -299,6 +299,7 @@ void CHARACTER::Initialize()
 
 	m_posSafeboxOpen.x = -1000;
 	m_posSafeboxOpen.y = -1000;
+	m_bSafeboxOpenIntent = false;
 
 	// EQUIP_LAST_SKILL_DELAY
 	m_dwLastSkillTime = get_dword_time();
@@ -5674,9 +5675,10 @@ float CHARACTER::GetDistanceFromSafeboxOpen() const
 	return DISTANCE_APPROX(GetX() - m_posSafeboxOpen.x, GetY() - m_posSafeboxOpen.y);
 }
 
-void CHARACTER::SetSafeboxOpenPosition()
+void CHARACTER::SetSafeboxOpenIntent()
 {
 	m_posSafeboxOpen = GetXYZ();
+	m_bSafeboxOpenIntent = true;
 }
 
 CSafebox * CHARACTER::GetSafebox() const
@@ -5686,6 +5688,16 @@ CSafebox * CHARACTER::GetSafebox() const
 
 void CHARACTER::ReqSafeboxLoad(const char* pszPassword)
 {
+	// A-23: one attempt per storekeeper NPC open. The item shop storeroom (game.open_mall, /click_mall) and a
+	// typed /safebox_password give no intent; the client closes its password dialog after each attempt anyway.
+	if (!m_bSafeboxOpenIntent)
+	{
+		ChatPacket(CHAT_TYPE_INFO, LC_TEXT("<창고> 거리가 멀어서 창고를 열 수 없습니다."));
+		return;
+	}
+
+	ClearSafeboxOpenIntent();
+
 	if (!*pszPassword || strlen(pszPassword) > SAFEBOX_PASSWORD_MAX_LEN)
 	{
 		ChatPacket(CHAT_TYPE_INFO, LC_TEXT("<창고> 잘못된 암호를 입력하셨습니다."));
@@ -5802,6 +5814,8 @@ void CHARACTER::ChangeSafeboxSize(BYTE bSize)
 
 void CHARACTER::CloseSafebox()
 {
+	ClearSafeboxOpenIntent();
+
 	if (!m_pkSafebox)
 		return;
 

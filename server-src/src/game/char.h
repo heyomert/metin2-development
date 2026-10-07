@@ -1531,7 +1531,9 @@ class CHARACTER : public CEntity, public CFSM, public CHorseRider
 		void				LoadMall(int iItemCount, TPlayerItem * pItems);
 		void				CloseMall();
 
-		void				SetSafeboxOpenPosition();
+		// A-23: the storekeeper NPC (game.open_safebox) allows one normal safebox load attempt; nothing else does
+		void				SetSafeboxOpenIntent();
+		void				ClearSafeboxOpenIntent() { m_bSafeboxOpenIntent = false; }
 		float				GetDistanceFromSafeboxOpen() const;
 
 	protected:
@@ -1544,6 +1546,7 @@ class CHARACTER : public CEntity, public CFSM, public CHorseRider
 		int					m_iMallLoadTime;
 
 		PIXEL_POSITION		m_posSafeboxOpen;
+		bool				m_bSafeboxOpenIntent;	///< set by game.open_safebox, consumed by the next ReqSafeboxLoad (A-23)
 
 		////////////////////////////////////////////////////////////////////////////////////////
 
