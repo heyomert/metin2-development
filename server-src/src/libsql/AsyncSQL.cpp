@@ -192,8 +192,11 @@ bool CAsyncSQL::Connect()
 		}
 	}
 
+	// One statement per call: with CLIENT_MULTI_STATEMENTS a failing second statement is only reported by
+	// mysql_next_result, so a failed statement could be counted as applied (tools/sql-reliability/multistmt.sh).
+	// No caller sends more than one statement (step 2a inventory).
 	if (!mysql_real_connect(&m_hDB, m_stHost.c_str(), m_stUser.c_str(),
-		m_stPassword.c_str(), m_stDB.c_str(), m_iPort, nullptr, CLIENT_MULTI_STATEMENTS))
+		m_stPassword.c_str(), m_stDB.c_str(), m_iPort, nullptr, 0))
 	{
 		fprintf(stderr, "mysql_real_connect: %s\n", mysql_error(&m_hDB));
 		return false;
