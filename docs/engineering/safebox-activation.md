@@ -67,6 +67,8 @@ CREATED, sonra ALREADY. `INSERT IGNORE` kullanılmaz (başka hataları gizler).
 olarak oyuncunundur; taşma kontrolü `hold`'u da sayar (iade asla taşmaya takılmaz). Yeni `GD/DG` paket çifti (A-20'ye
 dokunmaz) `hesap + pid + istek kimliği` taşır. CREATED → blokaj kalkar (ücret kesin, money log); ALREADY → iade, ACTIVE;
 FAILED → iade, UNKNOWN (yeniden sorgu). Eşleşmeyen ya da oturumu bitmiş sonuç → para işlemi yok, log satırı.
+Not: game `MONEY_LOG_QUEST` tipini `money_log`'a yazmıyor (`input_db.cpp:1737`); kesinleşen ücretin izi PR-2'de görünür bir yolla
+bırakılmalı.
 
 **Eski veri:** A (satır+item), B (satır) → ACTIVE; C (satırsız+item) → ACTIVE + ensure (itemler korunur); D → INACTIVE;
 D' (satırsız, itemsiz, bir karakter eski sistemde ödemiş: quest `use`) → bölüm 6 kapısı.
