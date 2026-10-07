@@ -130,6 +130,26 @@ bir cümle ("neyi kontrol ettim") yeter; **Orta**'da ilgili maddeler; **Yüksek*
 
 ---
 
+## 7. Regresyon ailesi seçimi
+
+Gerçek client senaryoları `docs/engineering/regression-baseline.md`'de (RB-01…RB-14). Her PR'da hepsi koşulmaz: değişikliğin
+dokunduğu **garantiler** belirlenir ve yalnız ilgili aile zorunlu olur. Aile seçilmezse PR'da `Etkilenmiyor — <neden>` yazılır.
+
+| Değişiklik türü (örnek) | Etkilenebilecek garanti | Zorunlu senaryolar |
+|---|---|---|
+| Ticaret, offline shop / pazar, NPC mağazası, depo | item sahipliği, yang korunumu, çift/kayıp item, tekrar giriş kalıcılığı, kesintide davranış | RB-04, RB-05, RB-06, RB-12 (+ RB-07 DB'ye yeni yazma ekliyorsa) |
+| Uzaktan NPC / yeni item veya yang işlemi | sunucu tarafı doğrulama, sahiplik, kayıt | RB-04 ya da RB-05 (hangisi aynı yolu kullanıyorsa), RB-06, RB-09/RB-10 |
+| Teleport / warp, dungeon / instance | çekirdek-harita geçişi, yeniden bağlanma, tekrar giriş, yeniden başlatma, durum kalıcılığı | RB-01, RB-06, RB-11, RB-13 |
+| Karakter / hesap | sahiplik, `player_index`, oluşturma/yükleme | RB-01, RB-02, RB-03, RB-06 |
+| Ekonomi / item (drop, craft, kullanım) | kayıt, çift/kayıp, kalıcılık | RB-06, RB-09, RB-10 (+ ticaret/depo yolu değiştiyse RB-04/RB-05) |
+| SQL katmanı / db önbelleği / AsyncSQL | kesinti ve yeniden bağlanma, sıra (FIFO), kapanış, log güvenliği | RB-03, RB-07…RB-14 + `tools/sql-reliability` (S1–S12, sqlprobe) |
+| Log / telemetri | gizlilik, defter tutarlılığı | RB-14 |
+
+Seçim gerekçesi etki analizine yazılır ("hangi garanti, neden bu senaryolar"). Yeni bir garanti ortaya çıkarsa senaryo
+`regression-baseline.md`'ye eklenir; tek bir koşudan gelen sayılar eşik olarak yazılmaz.
+
+---
+
 ## PR'a eklenecek kısa biçim
 
 Amaç formu doldurmak değil, **bilinmeyenleri görünür kılmak.** Analiz yapılmadan doldurulmuş form, hiç doldurulmamış formdan daha kötüdür.
@@ -140,6 +160,7 @@ Amaç formu doldurmak değil, **bilinmeyenleri görünür kılmak.** Analiz yap�
 - **Yüksek:** bütün alanlar.
 - **Doğrulama alanları (§6):** `Başarı yolu önce/sonra` yüksek riskte zorunludur. `Kanıtlamadığı / kalan bilinmeyen` orta ve
   yüksek riskte zorunludur.
+- **Regresyon ailesi (§7):** orta ve yüksek riskte zorunludur (seçilen senaryolar ya da `Etkilenmiyor — <neden>`).
 
 **Her alan şu üç cevaptan biri olmalı. Boş bırakılmaz, tahminle doldurulmaz:**
 1. **Kanıtlı cevap:** kısa cevap + kanıt (`yol:satır`, log satırı, test sonucu).
@@ -161,6 +182,7 @@ Monitoring/log: …       Panel/agent teşhisi: …
 Doküman: …              Teknik borç: …
 Alternatif değerlendirildi mi: …
 Başarı yolu önce/sonra: …   Kanıtlamadığı / kalan bilinmeyen: …
+Regresyon ailesi (§7): …
 ```
 
 **Örnek** (PR #5, P2P firewall; üç cevap biçimi de görünüyor; §6 alanlarından önce yazıldı):
