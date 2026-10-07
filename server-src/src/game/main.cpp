@@ -364,12 +364,13 @@ int main(int argc, char **argv)
 
 	if (g_bAuthServer)
 	{
-		int iLimit = DBManager::instance().CountQuery() / 50;
+		// CountPending: main + copy queue (CountQuery saw only the main queue, step 2a K4)
+		int iLimit = DBManager::instance().CountPending() / 50;
 		int i = 0;
 
 		do
 		{
-			DWORD dwCount = DBManager::instance().CountQuery();
+			DWORD dwCount = DBManager::instance().CountPending();
 			sys_log(0, "Queries %u", dwCount);
 
 			if (dwCount == 0)
@@ -378,7 +379,7 @@ int main(int argc, char **argv)
 			usleep(500000);
 
 			if (++i >= iLimit)
-				if (dwCount == DBManager::instance().CountQuery())
+				if (dwCount == DBManager::instance().CountPending())
 					break;
 		} while (1);
 	}

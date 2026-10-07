@@ -29,14 +29,15 @@ public:
 
 	// Returns false (stream stays off) if the queue or its worker cannot be created; never throws.
 	// extraSink: tests only (a second sink on the same logger, e.g. a deliberately slow one).
+	// fileMode: see metrics_daily_sink (-1 = process umask).
 	bool Start(const std::string& dir, const std::string& base, int keepDays, size_t queueSize,
-		spdlog::sink_ptr extraSink = nullptr)
+		spdlog::sink_ptr extraSink = nullptr, int fileMode = -1)
 	{
 		Stop();
 
 		try
 		{
-			m_sink = std::make_shared<metrics_daily_sink>(dir, base, keepDays);
+			m_sink = std::make_shared<metrics_daily_sink>(dir, base, keepDays, fileMode);
 			m_sink->set_pattern("%Y-%m-%dT%H:%M:%S%z %v");
 
 			// The worker blocks every signal so the process signal handlers (SIGVTALRM checkpoint, SIGTERM, ...)

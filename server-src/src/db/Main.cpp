@@ -98,22 +98,16 @@ int main()
 
 	signal_timer_disable();
 
+	// Quit() drains every connection itself: copy queue then main queue, one attempt each, nothing dropped silently;
+	// what could not be executed is counted (unexecuted_at_quit) and in the failure ledger. The old wait here counted
+	// only the main queue after the workers had already stopped, so it never waited (step 2a, K4).
 	DBManager.Quit();
-	int iCount;
 
-	while (1)
-	{
-		iCount = 0;
-
-		iCount += CDBManager::instance().CountReturnQuery(SQL_PLAYER);
-		iCount += CDBManager::instance().CountAsyncQuery(SQL_PLAYER);
-
-		if (iCount == 0)
-			break;
-
-		usleep(1000);
-		sys_log(0, "WAITING_QUERY_COUNT %d", iCount);
-	}
+	DWORD dwPending = 0;
+	for (int i = 0; i < SQL_MAX_NUM; ++i)
+		dwPending += CDBManager::instance().CountPending(i);
+	if (dwPending)
+		sys_err("SHUTDOWN: %u SQL message(s) still pending after Quit", (unsigned) dwPending);
 
 	// After the SQL connections have quit (what their workers left unexecuted is now countable), before the log closes
 	DBMetrics.Shutdown();

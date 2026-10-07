@@ -7,12 +7,13 @@
 //       -I<build>/vendor/mariadb-connector-c-3.4.5/include -I<server-src>/vendor/mariadb-connector-c-3.4.5/include \
 //       -o enqueue-bench enqueue-bench.cpp <build>/lib/liblibsql.a <build>/lib/liblibthecore.a \
 //       <build>/lib/libmariadbclient.a <build>/lib/libspdlog.a -lssl -lcrypto -lmd -lpthread -lm
-//   ./enqueue-bench            (run on an otherwise idle host; prints the median of 9 rounds)
+//   ./enqueue-bench [N]        (run on an otherwise idle host; prints the median of 9 rounds of N queries)
 #include "libsql/AsyncSQL.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <thread>
 #include <vector>
 
@@ -46,11 +47,14 @@ namespace
 	}
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	log_init();
 
-	const int N = 100000;
+	// Optional argv[1]: queries per round (default 100000; the 2a A/B uses 200000)
+	const int N = argc > 1 ? std::atoi(argv[1]) : 100000;
+	if (N <= 0)
+		return 2;
 	std::vector<double> rounds;
 	for (int r = 0; r < 9; ++r)
 		rounds.push_back(RoundNs(N));

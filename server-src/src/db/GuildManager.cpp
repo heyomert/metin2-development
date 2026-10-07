@@ -4,6 +4,7 @@
 #include "ClientManager.h"
 #include "QID.h"
 #include "Config.h"
+#include "libsql/SQLRead.h"
 #include <math.h>
 
 extern std::string g_stLocale;
@@ -954,24 +955,27 @@ void CGuildManager::BootReserveWar()
 	}
 }
 
-int GetAverageGuildMemberLevel(DWORD dwGID)
+// Both return false when the database did not answer: the guild power must then not be computed from made-up values
+// (DB step 2a, A-17; before, a failed query crashed db here: mysql_fetch_row(NULL) -> NULL row -> row[0])
+bool GetAverageGuildMemberLevel(DWORD dwGID, int& rAverage)
 {
 	char szQuery[QUERY_MAX_LEN];
 
-	snprintf(szQuery, sizeof(szQuery), 
-			"SELECT AVG(level) FROM guild_member%s, player%s AS p WHERE guild_id=%u AND guild_member%s.pid=p.id", 
+	snprintf(szQuery, sizeof(szQuery),
+			"SELECT AVG(level) FROM guild_member%s, player%s AS p WHERE guild_id=%u AND guild_member%s.pid=p.id",
 			GetTablePostfix(), GetTablePostfix(), dwGID, GetTablePostfix());
 
 	auto msg = CDBManager::instance().DirectQuery(szQuery);
 
-	MYSQL_ROW row;
-	row = mysql_fetch_row(msg->Get()->pSQLResult);
+	long long llValue;
+	if (!SQLReadFirstInt(msg.get(), llValue))
+		return false;
 
-	int nAverageLevel = 0; str_to_number(nAverageLevel, row[0]);
-	return nAverageLevel;
+	rAverage = (int) llValue;
+	return true;
 }
 
-int GetGuildMemberCount(DWORD dwGID)
+bool GetGuildMemberCount(DWORD dwGID, int& rCount)
 {
 	char szQuery[QUERY_MAX_LEN];
 
@@ -979,11 +983,12 @@ int GetGuildMemberCount(DWORD dwGID)
 
 	auto msg = CDBManager::instance().DirectQuery(szQuery);
 
-	MYSQL_ROW row;
-	row = mysql_fetch_row(msg->Get()->pSQLResult);
+	long long llValue;
+	if (!SQLReadFirstInt(msg.get(), llValue))
+		return false;
 
-	DWORD dwCount = 0; str_to_number(dwCount, row[0]);
-	return dwCount;
+	rCount = (int) llValue;
+	return true;
 }
 
 bool CGuildManager::ReserveWar(TPacketGuildWar * p)
@@ -993,6 +998,16 @@ bool CGuildManager::ReserveWar(TPacketGuildWar * p)
 
 	if (GID1 > GID2)
 		std::swap(GID1, GID2);
+
+	// The member figures first: they are the only part below that can fail, and nothing has been taken yet. Without
+	// them the guild power cannot be computed, so the reservation is refused (DB step 2a, A-17)
+	int alv1, mc1, alv2, mc2;
+	if (!GetAverageGuildMemberLevel(GID1, alv1) || !GetGuildMemberCount(GID1, mc1) ||
+		!GetAverageGuildMemberLevel(GID2, alv2) || !GetGuildMemberCount(GID2, mc2))
+	{
+		sys_err("GuildWar: cannot read the members of guild %u or %u; reservation refused", GID1, GID2);
+		return false;
+	}
 
 	if (p->lWarPrice > 0)
 		if (!TakeBetPrice(GID1, GID2, p->lWarPrice))
@@ -1015,8 +1030,8 @@ bool CGuildManager::ReserveWar(TPacketGuildWar * p)
 
 	lvp = c_aiScoreByLevel[MIN(GUILD_MAX_LEVEL, k1.level)];
 	rkp = c_aiScoreByRanking[GetRanking(GID1)];
-	alv = GetAverageGuildMemberLevel(GID1);
-	mc = GetGuildMemberCount(GID1);
+	alv = alv1;
+	mc = mc1;
 
 	polyPower.SetVar("lvp", lvp);
 	polyPower.SetVar("rkp", rkp);
@@ -1031,8 +1046,8 @@ bool CGuildManager::ReserveWar(TPacketGuildWar * p)
 
 	lvp = c_aiScoreByLevel[MIN(GUILD_MAX_LEVEL, k2.level)];
 	rkp = c_aiScoreByRanking[GetRanking(GID2)];
-	alv = GetAverageGuildMemberLevel(GID2);
-	mc = GetGuildMemberCount(GID2);
+	alv = alv2;
+	mc = mc2;
 
 	polyPower.SetVar("lvp", lvp);
 	polyPower.SetVar("rkp", rkp);

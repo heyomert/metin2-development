@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "DBManager.h"
 #include "ClientManager.h"
+#include "libsql/SQLFamily.h"
 
 extern std::string g_stLocale;
 
@@ -122,7 +123,10 @@ std::unique_ptr<SQLMsg> CDBManager::DirectQuery(const char* c_pszQuery, int iSlo
 	DWORD dt = get_dword_time() - t;
 
 	if (dt > 200) {
-		sys_err("[SLOW-DB] DirectQuery(%d) took %u ms: %s", iSlot, dt, c_pszQuery);
+		// Statement family and id only: the SQL text may carry passwords, names or IPs (step 2a, section 7b)
+		char family[64];
+		SQLFamily(c_pszQuery, family, sizeof(family));
+		sys_err("[SLOW-DB] DirectQuery(%d) took %u ms: family=%s id=%d", iSlot, dt, family, msg ? msg->iID : 0);
 	}
 
 	return msg;

@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "AsyncSQL.h"
+#include "SQLFamily.h"
 
 #include <ctime>
 
@@ -30,8 +31,55 @@ int64_t SQLStatsClock()
 #endif
 }
 
+const char* SQLResultName(ESQLResult r)
+{
+	switch (r)
+	{
+		case ESQLResult::APPLIED:				return "applied";
+		case ESQLResult::NOT_DELIVERED:			return "not_delivered";
+		case ESQLResult::ROLLED_BACK:			return "rolled_back";
+		case ESQLResult::AMBIGUOUS:				return "ambiguous";
+		case ESQLResult::PERMANENT:				return "permanent";
+		case ESQLResult::UNEXECUTED_AT_QUIT:	return "unexecuted_at_quit";
+	}
+	return "unknown";
+}
+
+const char* SQLPolicyName(ESQLPolicy p)
+{
+	switch (p)
+	{
+		case ESQLPolicy::NONE:								return "none";
+		case ESQLPolicy::TRANSIENT_CONNECTION:				return "transient_connection";
+		case ESQLPolicy::RETRYABLE_AFTER_PROVEN_ROLLBACK:	return "retryable_after_proven_rollback";
+		case ESQLPolicy::QUERY_PERMANENT:					return "query_permanent";
+		case ESQLPolicy::CONNECTION_CONFIG_FATAL:			return "connection_config_fatal";
+		case ESQLPolicy::RESOURCE_LIMIT:					return "resource_limit";
+		case ESQLPolicy::INTERNAL_PROTOCOL_STATE:			return "internal_protocol_state";
+		case ESQLPolicy::AMBIGUOUS_NO_RETRY:				return "ambiguous_no_retry";
+	}
+	return "unknown";
+}
+
+const char* SQLPhaseName(ESQLPhase p)
+{
+	switch (p)
+	{
+		case ESQLPhase::NONE:	return "none";
+		case ESQLPhase::SEND:	return "send";
+		case ESQLPhase::READ:	return "read";
+	}
+	return "unknown";
+}
+
 namespace
 {
+	// Process-wide failure hook (the ledger), set once at start-up and cleared before it goes away
+	std::atomic<SQLFailureHook> g_failureHook{ nullptr };
+
+	// Retry interval of the TRANSIENT_CONNECTION path: the value the code used before step 2a (not a tuned number)
+	constexpr std::chrono::milliseconds TRANSIENT_RETRY_INTERVAL(100);
+
 	ESQLErrnoBucket ErrnoBucket(unsigned int uiErrno)
 	{
 		switch (uiErrno)
@@ -51,20 +99,115 @@ namespace
 	{
 		counter.fetch_add(value, std::memory_order_release);
 	}
+
+	// docs/engineering/db-step2-asyncsql-fix.md, section 1b. The phase comes from the API that failed
+	// (mysql_send_query or mysql_read_query_result), not from the error number.
+	void Classify(ESQLPhase ePhase, unsigned e, ESQLResult& eResult, ESQLPolicy& ePolicy)
+	{
+		if (ePhase == ESQLPhase::SEND)
+		{
+			// The request was not completely written (Connector/C 3.4.5 send path + server test P1/P1b/P1c)
+			eResult = ESQLResult::NOT_DELIVERED;
+			switch (e)
+			{
+				case CR_CONNECTION_ERROR:		// server unreachable (probe P3, G1)
+				case CR_SERVER_GONE_ERROR:		// write failed after reconnecting
+				case CR_SERVER_LOST:			// lost during the reconnect handshake
+					ePolicy = ESQLPolicy::TRANSIENT_CONNECTION;
+					return;
+				case ER_CON_COUNT_ERROR:		// 1040 (probe C3)
+				case ER_TOO_MANY_USER_CONNECTIONS:	// 1203
+				case ER_USER_LIMIT_REACHED:		// 1226 (probe C4)
+					ePolicy = ESQLPolicy::RESOURCE_LIMIT;
+					return;
+				case CR_COMMANDS_OUT_OF_SYNC:
+				case CR_MALFORMED_PACKET:
+				case CR_OUT_OF_MEMORY:
+				case CR_UNKNOWN_ERROR:
+					ePolicy = ESQLPolicy::INTERNAL_PROTOCOL_STATE;
+					return;
+				case CR_NET_PACKET_TOO_LARGE:	// this statement is too large
+					ePolicy = ESQLPolicy::QUERY_PERMANENT;
+					return;
+				default:						// 1045 (C1), 1049 (C2), 1044, 1129, 1130, 2005, 2059 and anything not listed
+					ePolicy = ESQLPolicy::CONNECTION_CONFIG_FATAL;
+					return;
+			}
+		}
+
+		// The whole request was written: a lost connection leaves the outcome unknown (probe P2: executed)
+		switch (e)
+		{
+			case CR_COMMANDS_OUT_OF_SYNC:
+			case CR_MALFORMED_PACKET:
+			case CR_OUT_OF_MEMORY:
+				eResult = ESQLResult::AMBIGUOUS;
+				ePolicy = ESQLPolicy::INTERNAL_PROTOCOL_STATE;
+				return;
+			case ER_NET_READ_ERROR:
+			case ER_NET_READ_INTERRUPTED:
+			case ER_NET_ERROR_ON_WRITE:
+			case ER_NET_WRITE_INTERRUPTED:
+			case ER_CONNECTION_KILLED:
+			case ER_SERVER_SHUTDOWN:
+			case ER_QUERY_INTERRUPTED:
+			case ER_STATEMENT_TIMEOUT:
+			case ER_LOCK_WAIT_TIMEOUT:		// rollback proven only for tested families (R1-R5); none is marked yet
+			case ER_LOCK_DEADLOCK:
+				eResult = ESQLResult::AMBIGUOUS;
+				ePolicy = ESQLPolicy::AMBIGUOUS_NO_RETRY;
+				return;
+			default:
+				break;
+		}
+
+		if (e >= CR_MIN_ERROR && e <= CR_MAX_ERROR)	// any other client-side error after a complete send
+		{
+			eResult = ESQLResult::AMBIGUOUS;
+			ePolicy = ESQLPolicy::AMBIGUOUS_NO_RETRY;
+			return;
+		}
+
+		eResult = ESQLResult::PERMANENT;
+		ePolicy = ESQLPolicy::QUERY_PERMANENT;
+	}
+
+	bool IsConnectionLevel(ESQLPolicy p)
+	{
+		return p == ESQLPolicy::TRANSIENT_CONNECTION || p == ESQLPolicy::CONNECTION_CONFIG_FATAL ||
+			p == ESQLPolicy::RESOURCE_LIMIT || p == ESQLPolicy::INTERNAL_PROTOCOL_STATE;
+	}
 }
 
 CAsyncSQL::CAsyncSQL()
 	: m_stHost(""), m_stUser(""), m_stPassword(""), m_stDB(""), m_stLocale(""),
 	m_iPort(0), m_thread(nullptr), m_bEnd(false), m_bConnected(false),
 	m_iMsgCount(0), m_iQueryFinished(0), m_iCopiedQuery(0), m_ulThreadID(0),
+	m_bSessionCheckPending(false), m_bLastAttemptOk(true),
+	m_bInFailure(false), m_eLoggedPolicy(ESQLPolicy::NONE), m_ullSuppressedSinceLog(0),
 	m_bConfigured(false), m_bThreaded(false), m_bWorkerRunning(false), m_ullPushed(0), m_ullTaken(0), m_ullCopyDone(0), m_ullMainDone(0),
 	m_ullOk(0), m_ullErr(0), m_ullRetry(0), m_ullReconnectSeen(0), m_ullResultPushed(0), m_ullResultPopped(0),
 	m_ullExecCount(0), m_ullExecUsTotal(0), m_ullExecUsMax(0), m_llMainHeadMs(0), m_llCopyHeadMs(0),
-	m_llStuckSinceMs(0), m_ullUnexecutedAtQuit(0)
+	m_llStuckSinceMs(0), m_ullUnexecutedAtQuit(0), m_ullBytesPushed(0), m_ullBytesDone(0),
+	m_ullPhaseSendFail(0), m_ullPhaseReadFail(0), m_ullSessionCheckFail(0), m_ullLogSuppressed(0), m_ullFailureEvents(0)
 {
 	memset(&m_hDB, 0, sizeof(m_hDB));
 	for (auto& c : m_aullErrno)
 		c.store(0, std::memory_order_relaxed);
+	for (auto& c : m_aullResult)
+		c.store(0, std::memory_order_relaxed);
+	for (auto& c : m_aullPolicy)
+		c.store(0, std::memory_order_relaxed);
+}
+
+void CAsyncSQL::SetFailureHook(SQLFailureHook hook)
+{
+	g_failureHook.store(hook, std::memory_order_release);
+}
+
+void CAsyncSQL::SetLabel(const char* label)
+{
+	m_stLabel = label ? label : "";
 }
 
 void CAsyncSQL::NoteAttemptFailed(unsigned int uiErrno)
@@ -94,6 +237,13 @@ void CAsyncSQL::NoteThreadIdSeen()
 	Bump(m_ullReconnectSeen);
 }
 
+void CAsyncSQL::CountOutcome(ESQLResult eResult, ESQLPolicy ePolicy)
+{
+	Bump(m_aullResult[static_cast<int>(eResult)]);
+	if (eResult != ESQLResult::APPLIED)
+		Bump(m_aullPolicy[static_cast<int>(ePolicy)]);
+}
+
 void CAsyncSQL::CollectStats(SQLStats& out)
 {
 	const auto get = [](const std::atomic<uint64_t>& a) { return a.load(std::memory_order_acquire); };
@@ -108,8 +258,10 @@ void CAsyncSQL::CollectStats(SQLStats& out)
 	out.err = get(m_ullErr);
 	const uint64_t copyDone = get(m_ullCopyDone);
 	const uint64_t mainDone = get(m_ullMainDone);
+	const uint64_t bytesDone = get(m_ullBytesDone);
 	const uint64_t taken = get(m_ullTaken);
 	out.pushed = get(m_ullPushed);
+	const uint64_t bytesPushed = get(m_ullBytesPushed);
 	const uint64_t resultPopped = get(m_ullResultPopped);
 	const uint64_t resultPushed = get(m_ullResultPushed);
 
@@ -121,9 +273,27 @@ void CAsyncSQL::CollectStats(SQLStats& out)
 	out.execUsTotal = get(m_ullExecUsTotal);
 	out.execUsMax = m_ullExecUsMax.exchange(0, std::memory_order_relaxed);
 
+	out.resNotDelivered = get(m_aullResult[static_cast<int>(ESQLResult::NOT_DELIVERED)]);
+	out.resRolledBack = get(m_aullResult[static_cast<int>(ESQLResult::ROLLED_BACK)]);
+	out.resAmbiguous = get(m_aullResult[static_cast<int>(ESQLResult::AMBIGUOUS)]);
+	out.resPermanent = get(m_aullResult[static_cast<int>(ESQLResult::PERMANENT)]);
+	out.resUnexecutedAtQuit = get(m_aullResult[static_cast<int>(ESQLResult::UNEXECUTED_AT_QUIT)]);
+	out.polTransient = get(m_aullPolicy[static_cast<int>(ESQLPolicy::TRANSIENT_CONNECTION)]);
+	out.polConfigFatal = get(m_aullPolicy[static_cast<int>(ESQLPolicy::CONNECTION_CONFIG_FATAL)]);
+	out.polResourceLimit = get(m_aullPolicy[static_cast<int>(ESQLPolicy::RESOURCE_LIMIT)]);
+	out.polInternal = get(m_aullPolicy[static_cast<int>(ESQLPolicy::INTERNAL_PROTOCOL_STATE)]);
+	out.polQueryPermanent = get(m_aullPolicy[static_cast<int>(ESQLPolicy::QUERY_PERMANENT)]);
+	out.polAmbiguous = get(m_aullPolicy[static_cast<int>(ESQLPolicy::AMBIGUOUS_NO_RETRY)]);
+	out.phaseSendFail = get(m_ullPhaseSendFail);
+	out.phaseReadFail = get(m_ullPhaseReadFail);
+	out.sessionCheckFail = get(m_ullSessionCheckFail);
+	out.logSuppressed = get(m_ullLogSuppressed);
+	out.failureEvents = get(m_ullFailureEvents);
+
 	out.queued = out.pushed >= taken + mainDone ? out.pushed - taken - mainDone : 0;
 	out.copied = taken >= copyDone ? taken - copyDone : 0;
 	out.results = resultPushed >= resultPopped ? resultPushed - resultPopped : 0;
+	out.queuedBytes = bytesPushed >= bytesDone ? bytesPushed - bytesDone : 0;
 
 	const int64_t now = SQLStatsClock();
 	const int64_t copyHead = m_llCopyHeadMs.load(std::memory_order_relaxed);
@@ -211,8 +381,165 @@ bool CAsyncSQL::Connect()
 	fprintf(stdout, "AsyncSQL: connected to %s (reconnect %d)\n", m_stHost.c_str(), reconnect);
 
 	m_ulThreadID.store(mysql_thread_id(&m_hDB), std::memory_order_release);
+	VerifySession();
 	m_bConnected.store(true, std::memory_order_release);
 	return true;
+}
+
+// Autocommit and the character set are what the retry classification and every caller rely on
+// (docs/engineering/db-step2-asyncsql-fix.md, sections 2 and 9). Checked once after connecting and once after each
+// reconnect; never in a loop. Connector/C restores the character set itself on reconnect (probe K7d).
+void CAsyncSQL::VerifySession()
+{
+	m_bSessionCheckPending = false;
+
+	static const char kCheck[] = "SELECT @@autocommit, @@character_set_client";
+	if (mysql_send_query(&m_hDB, kCheck, sizeof(kCheck) - 1) || mysql_read_query_result(&m_hDB))
+	{
+		m_bSessionCheckPending = true; // not reachable now: checked after the next successful statement
+		return;
+	}
+
+	std::string autocommit, charset;
+	if (MYSQL_RES* res = mysql_store_result(&m_hDB))
+	{
+		if (MYSQL_ROW row = mysql_fetch_row(res))
+		{
+			autocommit = row[0] ? row[0] : "";
+			charset = row[1] ? row[1] : "";
+		}
+		mysql_free_result(res);
+	}
+	DrainResults();
+
+	const bool checkCharset = !m_stLocale.empty() && m_stLocale != "ascii";
+	if (autocommit != "1" || (checkCharset && charset != m_stLocale))
+	{
+		Bump(m_ullSessionCheckFail);
+		sys_err("AsyncSQL: session check failed role=%s autocommit=%s charset=%s expected_charset=%s",
+			m_stLabel.c_str(), autocommit.c_str(), charset.c_str(), checkCharset ? m_stLocale.c_str() : "-");
+	}
+}
+
+void CAsyncSQL::CheckThreadId()
+{
+	const unsigned long cur = mysql_thread_id(&m_hDB);
+	if (m_ulThreadID.load(std::memory_order_acquire) == cur)
+		return;
+
+	m_ulThreadID.store(cur, std::memory_order_release);
+	NoteThreadIdSeen();
+	m_bSessionCheckPending = true;
+	sys_log(0, "AsyncSQL: reconnected role=%s", m_stLabel.c_str());
+}
+
+// Frees any further result sets after the first one was taken (stored procedures; S11)
+void CAsyncSQL::DrainResults()
+{
+	while (mysql_next_result(&m_hDB) == 0)
+	{
+		if (MYSQL_RES* r = mysql_store_result(&m_hDB))
+			mysql_free_result(r);
+	}
+}
+
+// One attempt, with the failure phase known exactly: mysql_send_query writes the request, mysql_read_query_result
+// reads the answer (mysql_real_query would return -1 for some read-phase failures too).
+bool CAsyncSQL::Attempt(SQLMsg* p, ESQLPhase& ePhase, unsigned& uiErrno, MYSQL_RES*& rpFirst)
+{
+	rpFirst = nullptr;
+	CheckThreadId();
+	if (m_bSessionCheckPending && m_bLastAttemptOk)
+		VerifySession();
+
+	++p->uiAttempts;
+
+	if (mysql_send_query(&m_hDB, p->stQuery.c_str(), static_cast<unsigned long>(p->stQuery.length())))
+	{
+		ePhase = ESQLPhase::SEND;
+		uiErrno = mysql_errno(&m_hDB);
+		Bump(m_ullPhaseSendFail);
+		NoteAttemptFailed(uiErrno);
+		m_bLastAttemptOk = false;
+		return false;
+	}
+
+	// A statement with a result set: its rows are part of the answer. mysql_read_query_result reads only the column
+	// definitions; if the rows do not arrive (connection lost, query killed while sending them), mysql_store_result
+	// returns NULL and the attempt failed. Without this the caller saw an applied statement with no rows.
+	bool bReadFailed = mysql_read_query_result(&m_hDB) != 0;
+	if (!bReadFailed && mysql_field_count(&m_hDB) > 0)
+	{
+		rpFirst = mysql_store_result(&m_hDB);
+		bReadFailed = !rpFirst;
+	}
+
+	if (bReadFailed)
+	{
+		ePhase = ESQLPhase::READ;
+		uiErrno = mysql_errno(&m_hDB);
+		if (!uiErrno)
+			uiErrno = CR_UNKNOWN_ERROR;
+		Bump(m_ullPhaseReadFail);
+		NoteAttemptFailed(uiErrno);
+		m_bLastAttemptOk = false;
+		CheckThreadId();
+		return false;
+	}
+
+	ePhase = ESQLPhase::NONE;
+	uiErrno = 0;
+	m_bLastAttemptOk = true;
+	CheckThreadId(); // a silent reconnect inside this statement is checked before the next one
+	return true;
+}
+
+void CAsyncSQL::ReportFailure(const SQLMsg* p, ESQLPhase ePhase, unsigned uiErrno, ESQLResult eResult, ESQLPolicy ePolicy,
+	bool bCompleted)
+{
+	char family[64];
+	SQLFamily(p->stQuery.c_str(), family, sizeof(family));
+	const int64_t llAgeMs = p->llEnqueueMs ? SQLStatsClock() - p->llEnqueueMs : 0;
+
+	if (bCompleted)
+	{
+		if (const SQLFailureHook hook = g_failureHook.load(std::memory_order_acquire))
+		{
+			const SQLFailureEvent ev{ m_stLabel.c_str(), family, p->iID, uiErrno, ePhase, eResult, ePolicy, p->uiAttempts,
+				llAgeMs > 0 ? llAgeMs : 0 };
+			hook(ev);
+			Bump(m_ullFailureEvents);
+		}
+	}
+
+	// syserr: one line when the failure state changes; repeats of the same state are only counted
+	if (m_bInFailure && m_eLoggedPolicy == ePolicy)
+	{
+		++m_ullSuppressedSinceLog;
+		Bump(m_ullLogSuppressed);
+		return;
+	}
+
+	sys_err("AsyncSQL: %s role=%s family=%s id=%d phase=%s errno=%u result=%s policy=%s attempts=%u age_ms=%lld",
+		bCompleted ? "failed" : "attempt failed, retrying", m_stLabel.c_str(), family, p->iID, SQLPhaseName(ePhase), uiErrno,
+		SQLResultName(eResult), SQLPolicyName(ePolicy), p->uiAttempts, static_cast<long long>(llAgeMs > 0 ? llAgeMs : 0));
+	m_bInFailure = true;
+	m_eLoggedPolicy = ePolicy;
+	m_ullSuppressedSinceLog = 0;
+}
+
+void CAsyncSQL::ReportRecovered()
+{
+	if (!m_bInFailure)
+		return;
+
+	if (m_ullSuppressedSinceLog > 0 || IsConnectionLevel(m_eLoggedPolicy))
+		sys_err("AsyncSQL: recovered role=%s after policy=%s, %llu repeated failure(s) counted but not logged",
+			m_stLabel.c_str(), SQLPolicyName(m_eLoggedPolicy), static_cast<unsigned long long>(m_ullSuppressedSinceLog));
+
+	m_bInFailure = false;
+	m_eLoggedPolicy = ESQLPolicy::NONE;
+	m_ullSuppressedSinceLog = 0;
 }
 
 bool CAsyncSQL::Setup(CAsyncSQL* sql, bool bNoThread)
@@ -271,48 +598,83 @@ void CAsyncSQL::Quit()
 		m_thread->join();
 		m_thread.reset();
 
-		// The worker has stopped: whatever is still in its copy queue was never executed (telemetry only)
-		m_ullUnexecutedAtQuit.store(m_queue_query_copy.size(), std::memory_order_relaxed);
+		// Queued after the worker stopped (or the worker never ran: its first connect failed): never attempted
+		std::queue<std::unique_ptr<SQLMsg>> left;
+		{
+			std::lock_guard<std::mutex> lock(m_mtxQuery);
+			std::swap(left, m_queue_query);
+			m_llMainHeadMs.store(0, std::memory_order_relaxed);
+		}
+		std::queue<std::unique_ptr<SQLMsg>> copyLeft;
+		std::swap(copyLeft, m_queue_query_copy);
+
+		uint64_t n = 0;
+		for (auto* q : { &copyLeft, &left })
+		{
+			const bool fromCopy = q == &copyLeft;
+			while (!q->empty())
+			{
+				SQLMsg* p = q->front().get();
+				p->eResult = ESQLResult::UNEXECUTED_AT_QUIT;
+				p->uiSQLErrno = p->uiFinalErrno = CR_UNKNOWN_ERROR;
+				CountOutcome(ESQLResult::UNEXECUTED_AT_QUIT, ESQLPolicy::NONE);
+				Bump(m_ullErr);
+				Bump(fromCopy ? m_ullCopyDone : m_ullMainDone);
+				Bump(m_ullBytesDone, p->stQuery.size());
+				ReportFailure(p, ESQLPhase::NONE, 0, ESQLResult::UNEXECUTED_AT_QUIT, ESQLPolicy::NONE, true);
+				q->pop();
+				++n;
+			}
+		}
+		m_llCopyHeadMs.store(0, std::memory_order_relaxed);
+		if (n)
+		{
+			Bump(m_ullUnexecutedAtQuit, n);
+			sys_err("AsyncSQL: quit role=%s %llu message(s) queued after the worker stopped, not executed", m_stLabel.c_str(),
+				static_cast<unsigned long long>(n));
+		}
 	}
 }
 
 std::unique_ptr<SQLMsg> CAsyncSQL::DirectQuery(const char* c_pszQuery)
 {
-	unsigned long currentThreadID = mysql_thread_id(&m_hDB);
-	if (m_ulThreadID.load(std::memory_order_acquire) != currentThreadID)
-	{
-		sys_err("MySQL connection was reconnected. querying locale set");
-		NoteThreadIdSeen();
-		while (!QueryLocaleSet());
-		m_ulThreadID.store(currentThreadID, std::memory_order_release);
-	}
-
 	auto p = std::make_unique<SQLMsg>();
 	p->m_pkSQL = &m_hDB;
 	p->iID = m_iMsgCount.fetch_add(1, std::memory_order_acq_rel) + 1;
 	p->stQuery = c_pszQuery;
 
 	const int64_t llStartMs = SQLStatsClock();
-	bool bFailed = false;
 
-	if (mysql_real_query(&m_hDB, p->stQuery.c_str(), p->stQuery.length()))
-	{
-		char buf[1024];
-		snprintf(buf, sizeof(buf),
-			"AsyncSQL::DirectQuery : mysql_query error: %s\nquery: %s",
-			mysql_error(&m_hDB), p->stQuery.c_str());
+	// No retry and no waiting here: DirectQuery runs on the caller's thread (in game, the main loop)
+	ESQLPhase ePhase;
+	unsigned uiErrno;
+	MYSQL_RES* pFirst;
+	const bool bOk = Attempt(p.get(), ePhase, uiErrno, pFirst);
 
-		sys_err(buf);
-		p->uiSQLErrno = mysql_errno(&m_hDB);
-		bFailed = true;
-		NoteAttemptFailed(p->uiSQLErrno);
-	}
+	ESQLResult eResult = ESQLResult::APPLIED;
+	ESQLPolicy ePolicy = ESQLPolicy::NONE;
+	if (!bOk)
+		Classify(ePhase, uiErrno, eResult, ePolicy);
+
+	p->uiSQLErrno = bOk ? 0 : (uiErrno ? uiErrno : CR_UNKNOWN_ERROR); // same rule as Finish()
+	p->eResult = eResult;
+	p->ePolicy = ePolicy;
+	p->ePhase = ePhase;
 
 	// Coarse (clock granularity, a few ms): enough to see DirectQuery calls that hold the calling loop
 	const int64_t llElapsedMs = SQLStatsClock() - llStartMs;
-	NoteCompleted(p.get(), bFailed, llElapsedMs > 0 ? static_cast<uint64_t>(llElapsedMs) * 1000 : 0);
+	NoteCompleted(p.get(), !bOk, llElapsedMs > 0 ? static_cast<uint64_t>(llElapsedMs) * 1000 : 0);
+	CountOutcome(eResult, ePolicy);
 
-	p->Store();
+	if (bOk)
+		ReportRecovered();
+	else
+		ReportFailure(p.get(), ePhase, uiErrno, eResult, ePolicy, true);
+
+	if (bOk)
+		p->StoreApplied(pFirst);
+	else
+		p->StoreFailed();
 	return p;
 }
 
@@ -376,12 +738,14 @@ bool CAsyncSQL::PopResult(SQLMsg** pp)
 
 void CAsyncSQL::PushQuery(std::unique_ptr<SQLMsg> p)
 {
+	const uint64_t ullBytes = p->stQuery.size();
 	{
 		std::lock_guard<std::mutex> lock(m_mtxQuery);
 		if (m_queue_query.empty())
 			m_llMainHeadMs.store(p->llEnqueueMs, std::memory_order_relaxed);
 		m_queue_query.push(std::move(p));
 		Bump(m_ullPushed);
+		Bump(m_ullBytesPushed, ullBytes);
 	}
 	m_cvQuery.notify_one();
 }
@@ -417,12 +781,13 @@ bool CAsyncSQL::PeekQueryFromCopyQueue(SQLMsg** pp)
 	return true;
 }
 
+// Moves everything from the main queue to the worker's copy queue; returns how many messages moved (0 = none)
 int CAsyncSQL::CopyQuery()
 {
 	std::lock_guard<std::mutex> lock(m_mtxQuery);
 
 	if (m_queue_query.empty())
-		return -1;
+		return 0;
 
 	// Telemetry: what moves now is newer than anything already in the copy queue; publish the copy head before
 	// clearing the main head so a collector never sees both empty while messages wait
@@ -439,7 +804,7 @@ int CAsyncSQL::CopyQuery()
 	Bump(m_ullTaken, ullMoved);
 	m_llMainHeadMs.store(0, std::memory_order_relaxed);
 
-	return static_cast<int>(m_queue_query_copy.size());
+	return static_cast<int>(ullMoved);
 }
 
 bool CAsyncSQL::PopQueryFromCopyQueue()
@@ -470,6 +835,13 @@ DWORD CAsyncSQL::CountQuery()
 {
 	std::lock_guard<std::mutex> lock(m_mtxQuery);
 	return static_cast<DWORD>(m_queue_query.size());
+}
+
+DWORD CAsyncSQL::CountPending() const
+{
+	const uint64_t done = m_ullCopyDone.load(std::memory_order_acquire) + m_ullMainDone.load(std::memory_order_acquire);
+	const uint64_t pushed = m_ullPushed.load(std::memory_order_acquire);
+	return static_cast<DWORD>(pushed >= done ? pushed - done : 0);
 }
 
 DWORD CAsyncSQL::CountResult()
@@ -504,18 +876,6 @@ class cProfiler
 			return duration.count() <= m_nInterval;
 		}
 
-		long GetResultSec() const
-		{
-			auto duration = std::chrono::duration_cast<std::chrono::seconds>(m_end - m_start);
-			return static_cast<long>(duration.count());
-		}
-
-		long GetResultUSec() const
-		{
-			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(m_end - m_start);
-			return static_cast<long>(duration.count() % 1000000);
-		}
-
 		uint64_t GetElapsedUs() const
 		{
 			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(m_end - m_start);
@@ -528,6 +888,58 @@ class cProfiler
 		std::chrono::steady_clock::time_point m_end;
 };
 
+// Completes the copy queue's head: result, counters, report, and (ReturnQuery) its result in FIFO order, failures
+// included, so a ReturnQuery result is never delivered before every earlier statement has finished (H-1 barrier).
+void CAsyncSQL::Finish(ESQLResult eResult, ESQLPolicy ePolicy, ESQLPhase ePhase, unsigned uiErrno, uint64_t ullExecUs,
+	MYSQL_RES* pFirst)
+{
+	auto pMsg = std::move(m_queue_query_copy.front());
+	m_queue_query_copy.pop();
+	SQLMsg* p = pMsg.get();
+
+	const bool bFailed = eResult != ESQLResult::APPLIED;
+	// Callers read uiSQLErrno == 0 as "applied" (db/ClientManagerLogin.cpp:137): a failure without an error code
+	// (never attempted) still gets a non-zero one
+	p->uiSQLErrno = bFailed ? (uiErrno ? uiErrno : CR_UNKNOWN_ERROR) : 0;
+	p->eResult = eResult;
+	p->ePolicy = ePolicy;
+	p->ePhase = ePhase;
+
+	// Telemetry: before the result is published (PushResult) so its uiFinalErrno is set when the caller reads it
+	NoteCompleted(p, bFailed, ullExecUs);
+	CountOutcome(eResult, ePolicy);
+	if (eResult == ESQLResult::UNEXECUTED_AT_QUIT)
+		Bump(m_ullUnexecutedAtQuit);
+	Bump(m_ullCopyDone);
+	Bump(m_ullBytesDone, p->stQuery.size());
+	m_llStuckSinceMs.store(0, std::memory_order_relaxed);
+	m_llCopyHeadMs.store(m_queue_query_copy.empty() ? 0 : m_queue_query_copy.front()->llEnqueueMs,
+		std::memory_order_relaxed);
+
+	if (bFailed)
+		ReportFailure(p, ePhase, uiErrno, eResult, ePolicy, true);
+	else
+		ReportRecovered();
+
+	if (p->bReturn)
+	{
+		if (bFailed)
+			p->StoreFailed();
+		else
+			p->StoreApplied(pFirst);
+		PushResult(std::move(pMsg));
+	}
+	else if (!bFailed)
+	{
+		// A statement returning rows through AsyncQuery must not leave them pending (S11)
+		if (pFirst)
+			mysql_free_result(pFirst);
+		DrainResults();
+	}
+
+	m_iQueryFinished.fetch_add(1, std::memory_order_acq_rel);
+}
+
 void CAsyncSQL::ChildLoop()
 {
 	cProfiler profiler(500000); // 0.5 seconds
@@ -536,192 +948,126 @@ void CAsyncSQL::ChildLoop()
 
 	while (!m_bEnd.load(std::memory_order_acquire))
 	{
-		// Wait for queries using condition variable
-		std::unique_lock<std::mutex> lock(m_mtxQuery);
-		m_cvQuery.wait(lock, [this] {
-			return !m_queue_query.empty() || m_bEnd.load(std::memory_order_acquire);
-		});
-		lock.unlock();
-
-		if (m_bEnd.load(std::memory_order_acquire) && m_queue_query.empty())
-			break;
-
-		int count = CopyQuery();
-		if (count <= 0)
-			continue;
-
-		AddCopiedQueryCount(count);
-
-		while (count--)
+		// Sleep only when nothing is waiting: a head that still has to be attempted is never left behind (S1)
+		if (m_queue_query_copy.empty())
 		{
-			if (m_queue_query_copy.empty())
-				continue;
-
-			// Peek first, don't pop yet (for retry logic)
-			SQLMsg* p = m_queue_query_copy.front().get();
-			bool shouldRetry = false;
-			bool bFailed = false;
-
-			profiler.Start();
-
-			// Check for reconnection
-			unsigned long currentThreadID = mysql_thread_id(&m_hDB);
-			if (m_ulThreadID.load(std::memory_order_acquire) != currentThreadID)
 			{
-				sys_err("MySQL connection was reconnected. querying locale set");
-				NoteThreadIdSeen();
-				while (!QueryLocaleSet());
-				m_ulThreadID.store(currentThreadID, std::memory_order_release);
-			}
-
-			if (mysql_real_query(&m_hDB, p->stQuery.c_str(), p->stQuery.length()))
-			{
-				p->uiSQLErrno = mysql_errno(&m_hDB);
-				bFailed = true;
-				NoteAttemptFailed(p->uiSQLErrno);
-
-				sys_err("AsyncSQL: query failed: %s (query: %s errno: %d)",
-					mysql_error(&m_hDB), p->stQuery.c_str(), p->uiSQLErrno);
-
-				// Retry on connection errors
-				switch (p->uiSQLErrno)
-				{
-				case CR_SOCKET_CREATE_ERROR:
-				case CR_CONNECTION_ERROR:
-				case CR_IPSOCK_ERROR:
-				case CR_UNKNOWN_HOST:
-				case CR_SERVER_GONE_ERROR:
-				case CR_CONN_HOST_ERROR:
-				case ER_NOT_KEYFILE:
-				case ER_CRASHED_ON_USAGE:
-				case ER_CANT_OPEN_FILE:
-				case ER_HOST_NOT_PRIVILEGED:
-				case ER_HOST_IS_BLOCKED:
-				case ER_PASSWORD_NOT_ALLOWED:
-				case ER_PASSWORD_NO_MATCH:
-				case ER_CANT_CREATE_THREAD:
-				case ER_INVALID_USE_OF_NULL:
-					sys_err("AsyncSQL: retrying");
-					std::this_thread::sleep_for(std::chrono::milliseconds(100));
-					shouldRetry = true;
+				std::unique_lock<std::mutex> lock(m_mtxQuery);
+				m_cvQuery.wait(lock, [this] {
+					return !m_queue_query.empty() || m_bEnd.load(std::memory_order_acquire);
+				});
+				if (m_bEnd.load(std::memory_order_acquire))
 					break;
-				}
 			}
 
-			profiler.Stop();
-
-			// If retry, don't pop - continue to next iteration
-			if (shouldRetry)
-			{
-				Bump(m_ullRetry);
-				if (m_llStuckSinceMs.load(std::memory_order_relaxed) == 0)
-					m_llStuckSinceMs.store(SQLStatsClock(), std::memory_order_relaxed);
+			const int moved = CopyQuery();
+			if (moved <= 0)
 				continue;
-			}
+			AddCopiedQueryCount(moved);
+		}
 
-			// Log slow queries (> 0.5 seconds)
+		SQLMsg* p = m_queue_query_copy.front().get();
+
+		profiler.Start();
+		ESQLPhase ePhase;
+		unsigned uiErrno;
+		MYSQL_RES* pFirst;
+		const bool bOk = Attempt(p, ePhase, uiErrno, pFirst);
+		profiler.Stop();
+
+		if (bOk)
+		{
 			if (!profiler.IsOk())
 			{
-				sys_log(0, "[QUERY : LONG INTERVAL(OverSec %ld.%ld)] : %s",
-					profiler.GetResultSec(), profiler.GetResultUSec(), p->stQuery.c_str());
+				char family[64];
+				SQLFamily(p->stQuery.c_str(), family, sizeof(family));
+				sys_log(0, "AsyncSQL: slow role=%s family=%s id=%d ms=%llu", m_stLabel.c_str(), family, p->iID,
+					static_cast<unsigned long long>(profiler.GetElapsedUs() / 1000));
 			}
-
-			// Now pop and move ownership
-			auto pMsg = std::move(m_queue_query_copy.front());
-			m_queue_query_copy.pop();
-
-			// Telemetry: before the result is published (PushResult) so its uiFinalErrno is set when the caller reads it
-			NoteCompleted(p, bFailed, profiler.GetElapsedUs());
-			Bump(m_ullCopyDone);
-			m_llStuckSinceMs.store(0, std::memory_order_relaxed);
-			m_llCopyHeadMs.store(m_queue_query_copy.empty() ? 0 : m_queue_query_copy.front()->llEnqueueMs,
-				std::memory_order_relaxed);
-
-			if (p->bReturn)
-			{
-				p->Store();
-				// Move ownership to result queue
-				PushResult(std::move(pMsg));
-			}
-			// else: pMsg will be automatically deleted when it goes out of scope
-
-			m_iQueryFinished.fetch_add(1, std::memory_order_acq_rel);
+			Finish(ESQLResult::APPLIED, ESQLPolicy::NONE, ESQLPhase::NONE, 0, profiler.GetElapsedUs(), pFirst);
+			continue;
 		}
-	}
 
-	// Process remaining queries during shutdown
-	{
-		std::lock_guard<std::mutex> lock(m_mtxQuery);
+		ESQLResult eResult;
+		ESQLPolicy ePolicy;
+		Classify(ePhase, uiErrno, eResult, ePolicy);
 
-		while (!m_queue_query.empty())
+		if (ePolicy == ESQLPolicy::TRANSIENT_CONNECTION)
 		{
-			auto pMsg = std::move(m_queue_query.front());
-			SQLMsg* p = pMsg.get();
-			m_queue_query.pop();
+			// Not delivered and the database is unreachable: the same head again, in order, after the interval.
+			// Quit() interrupts the wait; the attempt is counted, the syserr line only on a change of state.
+			Bump(m_ullRetry);
+			if (m_llStuckSinceMs.load(std::memory_order_relaxed) == 0)
+				m_llStuckSinceMs.store(SQLStatsClock(), std::memory_order_relaxed);
+			ReportFailure(p, ePhase, uiErrno, eResult, ePolicy, false);
 
-			unsigned long currentThreadID = mysql_thread_id(&m_hDB);
-			if (m_ulThreadID.load(std::memory_order_acquire) != currentThreadID)
-			{
-				sys_err("MySQL connection was reconnected. querying locale set");
-				NoteThreadIdSeen();
-				while (!QueryLocaleSet());
-				m_ulThreadID.store(currentThreadID, std::memory_order_release);
-			}
-
-			// Telemetry: taken straight from the main queue; executed once, never retried here (not timed)
-			Bump(m_ullMainDone);
-			bool bFailed = false;
-
-			if (mysql_real_query(&m_hDB, p->stQuery.c_str(), p->stQuery.length()))
-			{
-				p->uiSQLErrno = mysql_errno(&m_hDB);
-				bFailed = true;
-				NoteAttemptFailed(p->uiSQLErrno);
-				NoteCompleted(p, true, UINT64_MAX);
-
-				sys_err("AsyncSQL::ChildLoop : mysql_query error: %s:\nquery: %s",
-					mysql_error(&m_hDB), p->stQuery.c_str());
-
-				// Retry on connection errors
-				switch (p->uiSQLErrno)
-				{
-				case CR_SOCKET_CREATE_ERROR:
-				case CR_CONNECTION_ERROR:
-				case CR_IPSOCK_ERROR:
-				case CR_UNKNOWN_HOST:
-				case CR_SERVER_GONE_ERROR:
-				case CR_CONN_HOST_ERROR:
-				case ER_NOT_KEYFILE:
-				case ER_CRASHED_ON_USAGE:
-				case ER_CANT_OPEN_FILE:
-				case ER_HOST_NOT_PRIVILEGED:
-				case ER_HOST_IS_BLOCKED:
-				case ER_PASSWORD_NOT_ALLOWED:
-				case ER_PASSWORD_NO_MATCH:
-				case ER_CANT_CREATE_THREAD:
-				case ER_INVALID_USE_OF_NULL:
-					continue;
-				}
-			}
-
-			sys_log(0, "QUERY_FLUSH: %s", p->stQuery.c_str());
-
-			if (!bFailed)
-				NoteCompleted(p, false, UINT64_MAX);
-
-			if (p->bReturn)
-			{
-				p->Store();
-				PushResult(std::move(pMsg));
-			}
-
-			m_iQueryFinished.fetch_add(1, std::memory_order_acq_rel);
+			std::unique_lock<std::mutex> lock(m_mtxQuery);
+			m_cvQuery.wait_for(lock, TRANSIENT_RETRY_INTERVAL, [this] { return m_bEnd.load(std::memory_order_acquire); });
+			continue;
 		}
 
-		m_llMainHeadMs.store(0, std::memory_order_relaxed);
+		Finish(eResult, ePolicy, ePhase, uiErrno, profiler.GetElapsedUs());
 	}
+
+	DrainAtQuit();
 
 	m_bWorkerRunning.store(false, std::memory_order_relaxed);
+}
+
+// Shutdown: the copy queue first, then the main queue, in order, one attempt each, classified like any attempt.
+// Nothing is dropped silently: once the database proves unreachable the rest is not attempted and every message
+// is counted and reported as UNEXECUTED_AT_QUIT. No time limit is set here (shutdown policy is a separate decision).
+void CAsyncSQL::DrainAtQuit()
+{
+	bool unreachable = false;
+	uint64_t applied = 0, failed = 0, unexecuted = 0;
+
+	for (;;)
+	{
+		if (m_queue_query_copy.empty())
+		{
+			const int moved = CopyQuery();
+			if (moved <= 0)
+				break;
+			AddCopiedQueryCount(moved);
+		}
+
+		if (unreachable)
+		{
+			Finish(ESQLResult::UNEXECUTED_AT_QUIT, ESQLPolicy::NONE, ESQLPhase::NONE, 0, UINT64_MAX);
+			++unexecuted;
+			continue;
+		}
+
+		SQLMsg* p = m_queue_query_copy.front().get();
+		ESQLPhase ePhase;
+		unsigned uiErrno;
+		MYSQL_RES* pFirst;
+		if (Attempt(p, ePhase, uiErrno, pFirst))
+		{
+			Finish(ESQLResult::APPLIED, ESQLPolicy::NONE, ESQLPhase::NONE, 0, UINT64_MAX, pFirst);
+			++applied;
+			continue;
+		}
+
+		ESQLResult eResult;
+		ESQLPolicy ePolicy;
+		Classify(ePhase, uiErrno, eResult, ePolicy);
+		if (ePolicy == ESQLPolicy::TRANSIENT_CONNECTION)
+			unreachable = true;
+		Finish(eResult, ePolicy, ePhase, uiErrno, UINT64_MAX);
+		++failed;
+	}
+
+	if (applied || failed || unexecuted)
+	{
+		const char* fmt = "AsyncSQL: quit role=%s drained applied=%llu failed=%llu unexecuted=%llu";
+		if (failed || unexecuted)
+			sys_err(fmt, m_stLabel.c_str(), static_cast<unsigned long long>(applied), static_cast<unsigned long long>(failed),
+				static_cast<unsigned long long>(unexecuted));
+		else
+			sys_log(0, fmt, m_stLabel.c_str(), static_cast<unsigned long long>(applied), 0ULL, 0ULL);
+	}
 }
 
 int CAsyncSQL::CountQueryFinished() const
@@ -752,13 +1098,9 @@ size_t CAsyncSQL::EscapeString(char* dst, size_t dstSize, const char* src, size_
 
 	if (dstSize < srcSize * 2 + 1)
 	{
-		char tmp[256];
-		size_t tmpLen = sizeof(tmp) > srcSize ? srcSize : sizeof(tmp);
-		strlcpy(tmp, src, tmpLen);
-
-		sys_err("FATAL ERROR!! not enough buffer size (dstSize %u srcSize %u src%s: %s)",
-			static_cast<unsigned int>(dstSize), static_cast<unsigned int>(srcSize),
-			tmpLen != srcSize ? "(trimmed to 255 characters)" : "", tmp);
+		// The source may be a password, a name or a message: its size only, never its content
+		sys_err("AsyncSQL: escape buffer too small (dstSize %u srcSize %u)",
+			static_cast<unsigned int>(dstSize), static_cast<unsigned int>(srcSize));
 
 		dst[0] = '\0';
 		return 0;

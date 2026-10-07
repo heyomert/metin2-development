@@ -55,6 +55,14 @@ void CDBMetrics::Initialize()
 
 	m_sql.Start(sql_metrics_reporter::Clock::now());
 	m_bEnabled = true;
+
+#ifdef OS_WINDOWS
+	const long lLedgerPid = (long) _getpid();
+#else
+	const long lLedgerPid = (long) getpid();
+#endif
+	if (!sql_failure_ledger::Instance().Start("db", lLedgerPid, METRICS_KEEP_DAYS, METRICS_QUEUE_SIZE))
+		sys_err("METRICS: SQL failure ledger initialization failed");
 	sys_log(0, "METRICS: SQL lines every 10 s to log/sql_YYYY-MM-DD.log, kept %d days", METRICS_KEEP_DAYS);
 }
 

@@ -4,9 +4,23 @@
 // quest InnoDB, player and guild_member Aria) and the real statement shapes of db/Cache.cpp, db/ClientManager*.cpp.
 // Runs only against the temporary MariaDB started by probe.sh; same fail-closed guard as sqlrt.
 //
-//   sqlprobe <R1|R2|R3|R4|R5|G1|G2|K7a|K7b|K7c|K7d|P0|P1|P1b|P1c|P2|P3|P4|P5|C1|C2|C3|C4|H1a|H1b|H1c>
+//   sqlprobe <R1|R2|R3|R4|R5|G1|G2|K7a|K7b|K7c|K7d|P0|P1|P1b|P1c|P2|P3|P4|P5|C1|C2|C3|C4|H1a|H1b|H1c|F1|L1|Q1|O1>
 //   env (probe.sh): RT_PORT, RT_PW, RT_SOCK, RT_TOKEN, RT_START (shell command that starts the temporary server)
+//   Built against the libsql before or after DB step 2a; probe.sh defines HAVE_2A for the 2a library, which adds the
+//   2a-only scenarios F1 (family labels), L1 (no raw SQL in any log), Q1 (shutdown with the server down), O1 (order
+//   under an outage). Log helpers count the old and the new syserr wording, so one tool compares before and after.
 #include "libsql/AsyncSQL.h"
+#ifdef HAVE_2A
+#include "libsql/SQLFamily.h"
+#include "libsql/SQLRead.h"
+#include "common/sql_failure_ledger.h"
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <glob.h>
+// game/db define this in their version.cpp; the probe has no build identity
+const char* M2BuildFields() { return " build=probe build_dirty=0 build_src=probe"; }
+#endif
 
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -106,14 +120,31 @@ namespace
 		return n;
 	}
 
+	// syslog.log: the 2a library writes "AsyncSQL: reconnected" there (the old one wrote "was reconnected" to syserr)
+	long long syslog_lines(const char* needle)
+	{
+		std::ifstream in("syslog.log");
+		std::string line;
+		long long n = 0;
+		while (std::getline(in, line))
+			if (line.find(needle) != std::string::npos)
+				++n;
+		return n;
+	}
+
+	// syserr lines per errno, old wording "errno: N)" and 2a wording "errno=N "
 	std::string errnos()
 	{
 		std::string s;
 		for (int e : { 1205, 1213, 1927, 1053, 2002, 2006, 2013, 2014 })
-			if (const long long n = syserr(("errno: " + std::to_string(e) + ")").c_str()))
+		{
+			const long long n = syserr(("errno: " + std::to_string(e) + ")").c_str()) + syserr(("errno=" + std::to_string(e) + " ").c_str());
+			if (n)
 				s += "e" + std::to_string(e) + "=" + std::to_string(n) + " ";
-		return s + "retrying=" + std::to_string(syserr("AsyncSQL: retrying")) + " reconnected="
-			+ std::to_string(syserr("was reconnected")) + " locale_fail=" + std::to_string(syserr("cannot set locale"));
+		}
+		return s + "retrying=" + std::to_string(syserr("AsyncSQL: retrying") + syserr("attempt failed, retrying"))
+			+ " reconnected=" + std::to_string(syserr("was reconnected") + syslog_lines("AsyncSQL: reconnected"))
+			+ " locale_fail=" + std::to_string(syserr("cannot set locale"));
 	}
 
 	double cpu_s()
@@ -179,6 +210,16 @@ namespace
 			die("asyncsql connect", nullptr);
 		if (scalar(g_admin, "SELECT COUNT(*) FROM information_schema.processlist WHERE user = 'rt'") < 1)
 			die("guard: AsyncSQL connection is not on the temporary server", nullptr);
+	}
+
+	void start_on(Probe& sql, bool threaded, const char* db)
+	{
+		if (!sql.Setup("127.0.0.1", "rt", getenv("RT_PW"), db, "latin1", !threaded, atoi(getenv("RT_PORT"))))
+			die("asyncsql setup", nullptr);
+		for (int i = 0; i < 100 && !sql.IsConnected(); ++i)
+			ms(50);
+		if (!sql.IsConnected())
+			die("asyncsql connect", nullptr);
 	}
 
 	long long marker(const std::string& tag) { return scalar(g_admin, "SELECT COUNT(*) FROM rt.m WHERE tag='" + tag + "'"); }
@@ -329,11 +370,13 @@ namespace
 		ms(2500);
 		const std::string during = errnos();
 		server_start();
-		ms(500);
+		ms(1500);
+		// Before any new statement: is the queued write applied on its own (2a), or stuck until something new arrives?
+		const long long duringBeforeNew = marker("g1-during");
 		sql.AsyncQuery(mark("g1-after").c_str()); // wakes a stuck head, if any
 		ms(2500);
-		printf("%s down: %s | after restart: before=%lld during=%lld after=%lld %s\n", g_scn, during.c_str(),
-			marker("g1-before"), marker("g1-during"), marker("g1-after"), errnos().c_str());
+		printf("%s down: %s | after restart: during_applied_before_new_query=%lld before=%lld during=%lld after=%lld %s\n",
+			g_scn, during.c_str(), duringBeforeNew, marker("g1-before"), marker("g1-during"), marker("g1-after"), errnos().c_str());
 		sql.Quit();
 	}
 
@@ -581,6 +624,27 @@ namespace
 	//   C1 access denied (password changed)   C2 unknown database (dropped)
 	//   C3 too many connections (server-wide)  C4 per-user connection limit
 	// C3/C4 use rtl, a user without global privileges (rt has GRANT ALL, and privileged users get an extra slot).
+	// phase/errno/result/policy of the first "AsyncSQL: failed" syserr line (2a format; empty for the old library)
+	std::string failure_fields()
+	{
+		std::ifstream in("syserr.log");
+		std::string line;
+		while (std::getline(in, line))
+		{
+			if (line.find("AsyncSQL: failed") == std::string::npos)
+				continue;
+			std::string out;
+			for (const char* key : { "phase=", "errno=", "result=", "policy=" })
+			{
+				const size_t p = line.find(std::string(" ") + key);
+				if (p != std::string::npos)
+					out += " " + line.substr(p + 1, line.find(' ', p + 1) - p - 1);
+			}
+			return " | first_failure:" + out;
+		}
+		return "";
+	}
+
 	void conn_case(int which)
 	{
 		const bool limited = which >= 3;
@@ -671,17 +735,562 @@ namespace
 		setCond(true);
 		sql.AsyncQuery("DO 2");
 		ms(3000);
-		const long long fails = syserr("query failed"), retries = syserr("AsyncSQL: retrying");
+		const long long fails = syserr("query failed") + syserr("AsyncSQL: failed"),
+			retries = syserr("AsyncSQL: retrying") + syserr("attempt failed, retrying");
 		setCond(false);
 		sql.Quit();
 		static const char* names[] = { "", "access_denied", "unknown_database", "too_many_connections", "user_connection_limit" };
-		printf("%s case=%s raw rc=%d errno=%u | asyncsql_today: failures_logged_in_3s=%lld retrying_lines=%lld\n", g_scn,
-			names[which], rc, e, fails, retries);
+		printf("%s case=%s raw rc=%d errno=%u | asyncsql_today: failures_logged_in_3s=%lld retrying_lines=%lld%s\n", g_scn,
+			names[which], rc, e, fails, retries, failure_fields().c_str());
 	}
 	void C1() { conn_case(1); }
 	void C2() { conn_case(2); }
 	void C3() { conn_case(3); }
 	void C4() { conn_case(4); }
+
+#ifdef HAVE_2A
+	// --- F1: family labels never carry a value (adversarial inputs) --------------------------------------------
+	void F1()
+	{
+		struct Case { const char* sql; const char* expect; };
+		const Case cases[] = {
+			{ "SELECT 'S3CR3T',password,social_id FROM account WHERE login='S3CR3T'", "select.account" },
+			{ "UPDATE safebox SET password='S3CR3T' WHERE account_id=7", "update.safebox" },
+			{ "REPLACE INTO item (id, owner_id) VALUES(1, 2)", "replace.item" },
+			{ "INSERT DELAYED INTO log (ip) VALUES('S3CR3T')", "insert.log" },
+			{ "DELETE FROM player.item WHERE owner_id=1", "delete.player.item" },
+			{ "SELECT 'x FROM S3CR3T' FROM account", "select.account" },
+			{ "SELECT 'it\\'s FROM S3CR3T' FROM account", "select.account" },
+			{ "SELECT 'a''b FROM S3CR3T' FROM account", "select.account" },
+			{ "SELECT \"x FROM S3CR3T\" FROM account", "select.account" },
+			{ "SELECT 'unterminated FROM S3CR3T", "select" },
+			{ "INSERT INTO item_award (login, vnum)select 'S3CR3T', 1 from DUAL where not exists (select login from item_award) ;", "insert.item_award" },
+			{ "update account set `cash` = `cash` + 50 where id = 1 limit 1", "update.account" },
+			{ "SET @i = (SELECT MAX(id) FROM loginlog2 WHERE account_id=1)", "set" },
+			{ "S3CR3T", "unknown" },
+			{ "/* S3CR3T */ SELECT 1", "select" },
+			{ "", "unknown" },
+		};
+		int ok = 0, leaks = 0, n = 0;
+		for (const Case& c : cases)
+		{
+			char out[64];
+			SQLFamily(c.sql, out, sizeof(out));
+			++n;
+			if (std::strstr(out, "S3CR3T") || std::strstr(out, "s3cr3t"))
+				++leaks;
+			if (std::strcmp(out, c.expect) == 0)
+				++ok;
+			else
+				printf("%s mismatch: got=%s expected=%s\n", g_scn, out, c.expect);
+		}
+		printf("%s cases=%d as_expected=%d labels_with_secret=%d\n", g_scn, n, ok, leaks);
+	}
+
+	// --- L1: no raw SQL (or any value) in syserr, syslog or the failure ledger --------------------------------
+	// Every path that wrote raw SQL before 2a is triggered with a statement carrying a marker value.
+	long long file_count(const char* path, const char* needle)
+	{
+		std::ifstream in(path);
+		std::string line;
+		long long n = 0;
+		while (std::getline(in, line))
+			if (line.find(needle) != std::string::npos)
+				++n;
+		return n;
+	}
+
+	void L1()
+	{
+		const char* SECRET = "S3CR3T-L1";
+		if (!sql_failure_ledger::Instance().Start("probe", (long) getpid(), 14, 4096))
+			die("ledger start", nullptr);
+
+		Probe worker, direct;
+		start(worker, true);
+		start(direct, false);
+		worker.SetLabel("probe.rt.main");
+		direct.SetLabel("probe.rt.direct");
+
+		// worker failure (old :580), direct failure (old :298), slow statement (old :622), escape overflow (old :756)
+		worker.AsyncQuery((std::string("SELEC '") + SECRET + "'").c_str());
+		direct.DirectQuery((std::string("SELEC '") + SECRET + "'").c_str());
+		worker.AsyncQuery((std::string("INSERT INTO rt.m (tag) SELECT '") + SECRET + "' FROM DUAL WHERE SLEEP(0.7) = 0").c_str());
+		char small[8];
+		worker.EscapeString(small, sizeof(small), SECRET, std::strlen(SECRET));
+		ms(1500);
+
+		// shutdown with pending statements while the server is down (old :679 and :704)
+		server_stop();
+		for (int i = 0; i < 3; ++i)
+			worker.AsyncQuery((std::string("INSERT INTO rt.m (tag) VALUES ('") + SECRET + "')").c_str());
+		ms(300);
+		worker.Quit();
+		server_start();
+		ms(1500); // spdlog flushes every second; the ledger writes per line
+
+		glob_t g{};
+		long long ledgerLines = 0, ledgerSecret = 0;
+		int ledgerMode = -1;
+		if (glob("log/sql_failures_*.log", 0, nullptr, &g) == 0)
+		{
+			for (size_t i = 0; i < g.gl_pathc; ++i)
+			{
+				ledgerLines += file_count(g.gl_pathv[i], "src=sql_failure");
+				ledgerSecret += file_count(g.gl_pathv[i], SECRET);
+				struct stat st{};
+				if (stat(g.gl_pathv[i], &st) == 0)
+					ledgerMode = st.st_mode & 0777;
+			}
+			globfree(&g);
+		}
+		printf("%s secret_in_syserr=%lld secret_in_syslog=%lld secret_in_ledger=%lld ledger_lines=%lld ledger_mode=%o"
+			" metadata_lines_in_syserr=%lld\n", g_scn, file_count("syserr.log", SECRET), file_count("syslog.log", SECRET),
+			ledgerSecret, ledgerLines, ledgerMode, file_count("syserr.log", "family="));
+	}
+
+	// --- Q1: shutdown with the server down: nothing silent, everything counted ---------------------------------
+	void Q1()
+	{
+		Probe sql;
+		start(sql, true);
+		sql.AsyncQuery(mark("q1-before").c_str());
+		ms(800);
+		server_stop();
+		for (int i = 1; i <= 5; ++i)
+			sql.AsyncQuery(mark("q1-" + std::to_string(i)).c_str());
+		ms(500);
+		const auto t0 = clk::now();
+		sql.Quit();
+		const long long quitMs = std::chrono::duration_cast<std::chrono::milliseconds>(clk::now() - t0).count();
+		server_start();
+		SQLStats st;
+		sql.CollectStats(st);
+		ms(1200);
+		printf("%s before=%lld queued_while_down=5 applied_after=%lld not_delivered=%llu unexecuted_at_quit=%llu pending=%u"
+			" quit_returned_within_2s=%d drain_line=%lld\n", g_scn, marker("q1-before"),
+			scalar(g_admin, "SELECT COUNT(*) FROM rt.m WHERE tag LIKE 'q1-_'"), (unsigned long long) st.resNotDelivered,
+			(unsigned long long) st.resUnexecutedAtQuit, (unsigned) sql.CountPending(), quitMs < 2000 ? 1 : 0,
+			syserr("quit role="));
+	}
+
+	// --- O1: order of writes to one row survives an outage (FIFO + in-place retry) ------------------------------
+	void O1()
+	{
+		Probe mainSql;
+		start(mainSql, true);
+		must(g_admin, item_replace(7001, 70, 1));
+		server_stop();
+		mainSql.ReturnQuery(item_replace(7001, 70, 2).c_str(), nullptr);
+		mainSql.ReturnQuery(item_replace(7001, 70, 3).c_str(), nullptr);
+		mainSql.ReturnQuery("SELECT 1", nullptr); // barrier: its result comes after both writes
+		ms(1000);
+		server_start();
+		std::vector<int> order;
+		for (int i = 0; i < 100 && order.size() < 3; ++i)
+		{
+			std::unique_ptr<SQLMsg> r;
+			while (mainSql.PopResult(r))
+				order.push_back(r->iID);
+			ms(50);
+		}
+		const bool inOrder = order.size() == 3 && order[0] < order[1] && order[1] < order[2];
+		printf("%s final_count=%lld (last write = 3) results=%zu results_in_order=%d\n", g_scn, item_count(7001), order.size(),
+			inOrder ? 1 : 0);
+		mainSql.Quit();
+	}
+
+	// --- G3: db/GuildManager.cpp GetAverageGuildMemberLevel / GetGuildMemberCount on a database failure ----------
+	// Same statements (unqualified tables, as db sends them). "old" = the code before the fix, run in a child process
+	// because it dereferences the row of a missing result; "new" = libsql/SQLRead.h, which the fixed functions call.
+	static int OldShape(SQLMsg* msg) // copied from GuildManager.cpp before step 2a
+	{
+		MYSQL_ROW row;
+		row = mysql_fetch_row(msg->Get()->pSQLResult);
+		int n = 0;
+		if (row[0] && row[0][0])
+			n = (int) strtol(row[0], nullptr, 10);
+		return n;
+	}
+
+	std::string old_shape_in_child(SQLMsg* msg)
+	{
+		fflush(stdout);
+		const pid_t pid = fork();
+		if (pid == 0)
+		{
+			OldShape(msg);
+			_exit(0);
+		}
+		int status = 0;
+		waitpid(pid, &status, 0);
+		if (WIFSIGNALED(status))
+			return std::string("killed_by_signal_") + std::to_string(WTERMSIG(status));
+		return "exit_" + std::to_string(WEXITSTATUS(status));
+	}
+
+	void G3()
+	{
+		must(g_admin, "INSERT INTO player.player (id, account_id, name, level) VALUES (51, 1, 'g3a', 10), (52, 1, 'g3b', 20)");
+		must(g_admin, "INSERT INTO player.guild_member (pid, guild_id, grade) VALUES (51, 7, 1), (52, 7, 1)");
+		Probe sql;
+		start_on(sql, false, "player");
+		auto avgQ = [](int gid) { return "SELECT AVG(level) FROM guild_member, player AS p WHERE guild_id=" + std::to_string(gid) + " AND guild_member.pid=p.id"; };
+		auto cntQ = [](int gid) { return "SELECT COUNT(*) FROM guild_member WHERE guild_id=" + std::to_string(gid); };
+
+		std::string out;
+		for (int gid : { 7, 8 }) // 8: no members (AVG is NULL)
+		{
+			auto a = sql.DirectQuery(avgQ(gid).c_str());
+			auto c = sql.DirectQuery(cntQ(gid).c_str());
+			if (a->uiSQLErrno || c->uiSQLErrno) // the old shape would crash this process
+			{
+				out += " guild" + std::to_string(gid) + ":{query_failed avg_errno=" + std::to_string(a->uiSQLErrno) + " count_errno="
+					+ std::to_string(c->uiSQLErrno) + "}";
+				continue;
+			}
+			// Both readers read the same single row: the old shape first, then rewind for the new one
+			const int oldAvg = OldShape(a.get()), oldCnt = OldShape(c.get());
+			mysql_data_seek(a->Get()->pSQLResult, 0);
+			mysql_data_seek(c->Get()->pSQLResult, 0);
+			long long av = -1, cv = -1;
+			const bool aok = SQLReadFirstInt(a.get(), av), cok = SQLReadFirstInt(c.get(), cv);
+			out += " guild" + std::to_string(gid) + ":{old_avg=" + std::to_string(oldAvg) + " new_avg=" + (aok ? std::to_string(av) : "fail")
+				+ " old_count=" + std::to_string(oldCnt) + " new_count=" + (cok ? std::to_string(cv) : "fail") + "}";
+		}
+
+		server_stop();
+		auto fa = sql.DirectQuery(avgQ(7).c_str());
+		auto fc = sql.DirectQuery(cntQ(7).c_str());
+		long long v = -1;
+		const bool newAvg = SQLReadFirstInt(fa.get(), v), newCnt = SQLReadFirstInt(fc.get(), v);
+		out += " db_down:{errno=" + std::to_string(fa->uiSQLErrno) + " old_avg=" + old_shape_in_child(fa.get()) + " old_count="
+			+ old_shape_in_child(fc.get()) + " new_avg=" + (newAvg ? "value" : "refused") + " new_count=" + (newCnt ? "value" : "refused") + "}";
+		server_start();
+		printf("%s%s\n", g_scn, out.c_str());
+	}
+
+	// --- M1: one statement per call (CLIENT_MULTI_STATEMENTS off) ---------------------------------------------------
+	// The only statements with a ';' in the sources are item_award's (game/questlua_pc.cpp:2726, 2754): trailing " ;".
+	void M1()
+	{
+		must(g_admin, "CREATE TABLE rt.ia (id INT AUTO_INCREMENT PRIMARY KEY, login VARCHAR(30) NOT NULL, vnum INT NOT NULL,"
+			" count INT NOT NULL, given_time DATETIME, why VARCHAR(128) NOT NULL, mall TINYINT NOT NULL) ENGINE=InnoDB");
+		const char* award = "INSERT INTO rt.ia (login, vnum, count, given_time, why, mall)select 'm1login', 27001, 1, now(), 'm1why', 1"
+			" from DUAL where not exists (select login, why from rt.ia where login = 'm1login' and why  = 'm1why') ;";
+
+		Probe worker, direct;
+		start(worker, true);
+		start(direct, false);
+		// One after another (two connections writing the same award at once race on InnoDB locks; not what is tested here)
+		worker.AsyncQuery(award);	// as game/questlua_pc.cpp sends it (DBManager::Query)
+		ms(500);
+		worker.AsyncQuery(award);	// same award again: NOT EXISTS keeps one row
+		ms(500);
+		auto d = direct.DirectQuery(award);
+		auto two = direct.DirectQuery("INSERT INTO rt.m (tag) VALUES ('m1-a'); INSERT INTO rt.m (tag) VALUES ('m1-b')");
+		ms(500);
+
+		SQLStats ws;
+		worker.CollectStats(ws);
+		printf("%s award_rows=%lld worker_ok=%llu worker_err=%llu direct_award_errno=%u | two_statements errno=%u result=%s"
+			" applied_a=%lld applied_b=%lld\n", g_scn, scalar(g_admin, "SELECT COUNT(*) FROM rt.ia"), (unsigned long long) ws.ok,
+			(unsigned long long) ws.err, d->uiSQLErrno, two->uiSQLErrno, SQLResultName(two->eResult), marker("m1-a"), marker("m1-b"));
+		worker.Quit();
+	}
+
+	// --- L2: failure ledger overflow (queue 64): the caller never waits, drops are counted, nothing raw anywhere ------
+	// A worker whose first connect fails never runs; Quit() reports every queued message as unexecuted_at_quit in a
+	// tight loop on the caller's thread (no network per message), far faster than the ledger writer drains its queue.
+	void L2()
+	{
+		const char* SECRET = "S3CR3T-L2";
+		if (!sql_failure_ledger::Instance().Start("probe", (long) getpid(), 14, 64))
+			die("ledger start", nullptr);
+
+		Probe sql;
+		sql.Setup("127.0.0.1", "nobody", "x", "none", "", false, 1); // nothing listens on port 1
+		ms(300);
+		sql.SetLabel("probe.rt.main");
+
+		const int N = 20000;
+		const std::string q = std::string("INSERT INTO rt.m (tag) VALUES ('") + SECRET + "')";
+		for (int i = 0; i < N; ++i)
+			sql.AsyncQuery(q.c_str());
+
+		const auto t0 = clk::now();
+		sql.Quit();
+		const long long quitUs = std::chrono::duration_cast<std::chrono::microseconds>(clk::now() - t0).count();
+		ms(2000);
+
+		SQLStats st;
+		sql.CollectStats(st);
+		const unsigned long long dropped = sql_failure_ledger::Instance().Dropped();
+		const unsigned long long writeErrors = sql_failure_ledger::Instance().WriteErrors();
+		glob_t g{};
+		long long lines = 0, secret = 0;
+		if (glob("log/sql_failures_*.log", 0, nullptr, &g) == 0)
+		{
+			for (size_t i = 0; i < g.gl_pathc; ++i)
+			{
+				lines += file_count(g.gl_pathv[i], "src=sql_failure");
+				secret += file_count(g.gl_pathv[i], SECRET);
+			}
+			globfree(&g);
+		}
+		// Exact numbers depend on the writer thread's speed; the invariants do not
+		printf("%s queued=%d events=%llu events_eq_queued=%d unexecuted=%llu dropped_gt_0=%d lines_plus_dropped_eq_events=%d"
+			" write_errors=%llu quit_lt_1s=%d secret_in_syserr=%lld secret_in_syslog=%lld secret_in_ledger=%lld"
+			" syserr_lines_for_quit=%lld\n", g_scn, N, (unsigned long long) st.failureEvents, st.failureEvents == (uint64_t) N ? 1 : 0,
+			(unsigned long long) st.resUnexecutedAtQuit, dropped > 0 ? 1 : 0, (unsigned long long) lines + dropped == st.failureEvents ? 1 : 0,
+			writeErrors, quitUs < 1000000 ? 1 : 0, file_count("syserr.log", SECRET), file_count("syslog.log", SECRET), secret,
+			file_count("syserr.log", "AsyncSQL:"));
+		fprintf(stderr, "L2 measured: quit_us=%lld per_event_ns=%lld lines=%lld dropped=%llu\n", quitUs, quitUs * 1000 / N, lines, dropped);
+	}
+#endif
+
+	// --- D1-D3: what a DirectQuery caller sees (DirectQuery caller audit; same code against the old and the 2a library) --
+	// Per call: errno, the fields callers read (Get() null?, uiNumRows, uiAffectedRows), whether the call held the caller
+	// for >= 1 s, and whether the statement was applied in the end.
+	std::string direct_call(Probe& sql, const std::string& tag)
+	{
+		const auto t0 = clk::now();
+		auto r = sql.DirectQuery(mark(tag).c_str());
+		const long long took = std::chrono::duration_cast<std::chrono::milliseconds>(clk::now() - t0).count();
+		SQLResult* res = r ? r->Get() : nullptr;
+		char buf[256];
+		std::snprintf(buf, sizeof(buf), " %s:{errno=%u get_null=%d rows=%u affected=%u held_ge_1s=%d}", tag.c_str(),
+			r ? r->uiSQLErrno : 0u, res ? 0 : 1, res ? res->uiNumRows : 0u, res ? res->uiAffectedRows : 0u, took >= 1000 ? 1 : 0);
+		return buf;
+	}
+
+	// D1: database down, no reconnect before it; three calls 0.5 s apart; the server comes back 3 s after it stopped
+	void D1()
+	{
+		Probe sql;
+		start(sql, false);
+		std::string out = direct_call(sql, "d1-up");
+		server_stop();
+		const auto down = clk::now();
+		std::thread restarter([] { ms(3000); server_start(); });
+		for (int i = 1; i <= 3; ++i)
+		{
+			out += direct_call(sql, "d1-down" + std::to_string(i));
+			ms(500);
+		}
+		restarter.join();
+		const long long downMs = std::chrono::duration_cast<std::chrono::milliseconds>(clk::now() - down).count();
+		ms(500);
+		out += direct_call(sql, "d1-back");
+		printf("%s%s | applied: down1=%lld down2=%lld down3=%lld back=%lld outage_ge_3s=%d\n", g_scn, out.c_str(),
+			marker("d1-down1"), marker("d1-down2"), marker("d1-down3"), marker("d1-back"), downMs >= 3000 ? 1 : 0);
+	}
+
+	// D2: as D1, but the connection was silently re-established by the statement before (K7 precondition)
+	void D2()
+	{
+		Probe sql;
+		start(sql, false);
+		k7_prepare(sql, false, "d2");
+		server_stop();
+		std::thread restarter([] { ms(3000); server_start(); });
+		std::string out;
+		for (int i = 1; i <= 3; ++i)
+		{
+			out += direct_call(sql, "d2-down" + std::to_string(i));
+			ms(500);
+		}
+		restarter.join();
+		ms(500);
+		out += direct_call(sql, "d2-back");
+		printf("%s%s | applied: down1=%lld down2=%lld down3=%lld back=%lld\n", g_scn, out.c_str(), marker("d2-down1"),
+			marker("d2-down2"), marker("d2-down3"), marker("d2-back"));
+	}
+
+	// D3: server up, statements the server rejects: what the caller's checks read
+	void D3()
+	{
+		Probe sql;
+		start(sql, false);
+		std::string out;
+		for (const char* q : { "UPDATE rt.no_such_table SET v=1 WHERE id=1", "SELECT v FROM rt.no_such_table WHERE id=1",
+			"UPDATE rt.h SET v=1 WHERE id=424242", "SELECT v FROM rt.h WHERE id=424242", "INSERT INTO rt.m (tag) VALUES ('d3-ok')",
+			"INSERT INTO rt.no_such_table (tag) VALUES ('d3-fail')" })
+		{
+			auto r = sql.DirectQuery(q);
+			SQLResult* res = r ? r->Get() : nullptr;
+			char buf[200];
+			std::snprintf(buf, sizeof(buf), " {errno=%u get_null=%d result_set=%d rows=%u affected=%u insert_id=%u}",
+				r ? r->uiSQLErrno : 0u, res ? 0 : 1, res && res->pSQLResult ? 1 : 0, res ? res->uiNumRows : 0u,
+				res ? res->uiAffectedRows : 0u, res ? res->uiInsertID : 0u);
+			out += buf;
+		}
+		printf("%s missing_table_update/missing_table_select/no_row_update/no_row_select/insert_ok/insert_fail_after_ok:%s\n",
+			g_scn, out.c_str());
+	}
+
+	// D4: the checks of db/ClientManagerPlayer.cpp __QUERY_PLAYER_CREATE (:926 INSERT player, `uiAffectedRows <= 0` on a
+	// uint32_t, then `player_id = uiInsertID`; :941 UPDATE player_index, same check), copied onto throwaway tables.
+	// A replica of the caller's logic on the same libsql, not the db process itself.
+	// mode 0: the INSERT fails because the server is down (and so does the UPDATE);
+	// mode 1: server up, the INSERT is rejected (duplicate name; stands for any server-side error), the UPDATE runs.
+	void player_create_replica(int mode)
+	{
+		must(g_admin, "CREATE TABLE rt.p (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(24) NOT NULL UNIQUE) ENGINE=InnoDB");
+		must(g_admin, "CREATE TABLE rt.pi (id INT PRIMARY KEY, pid1 INT NOT NULL DEFAULT 0) ENGINE=InnoDB");
+		must(g_admin, "INSERT INTO rt.pi (id) VALUES (2)");
+
+		Probe sql;
+		start(sql, false);
+		// an earlier, successful character creation on the same connection (another account)
+		auto prev = sql.DirectQuery("INSERT INTO rt.p (name) VALUES ('first')");
+		const unsigned prevId = prev->Get()->uiInsertID;
+
+		if (mode == 0)
+			server_stop();
+
+		auto ins = sql.DirectQuery(mode == 0 ? "INSERT INTO rt.p (name) VALUES ('second')" : "INSERT INTO rt.p (name) VALUES ('first')");
+		const bool insCheckPasses = !(ins->Get()->uiAffectedRows <= 0);
+		const unsigned playerId = ins->Get()->uiInsertID;
+
+		auto upd = sql.DirectQuery(("UPDATE rt.pi SET pid1=" + std::to_string(playerId) + " WHERE id=2").c_str());
+		const bool updCheckPasses = !(upd->Get()->uiAffectedRows <= 0);
+
+		if (mode == 0)
+			server_start();
+		printf("%s insert_errno=%u insert_affected=%u insert_check_passes=%d player_id_used=%u equals_earlier_insert=%d"
+			" update_errno=%u update_check_passes=%d => %s | player_index.pid1=%lld\n", g_scn, ins->uiSQLErrno,
+			ins->Get()->uiAffectedRows, insCheckPasses ? 1 : 0, playerId, playerId == prevId && prevId != 0 ? 1 : 0, upd->uiSQLErrno,
+			updCheckPasses ? 1 : 0, insCheckPasses && updCheckPasses ? "CREATE_SUCCESS sent" : "create failed",
+			scalar(g_admin, "SELECT pid1 FROM rt.pi WHERE id=2"));
+	}
+	// D6: how long one DirectQuery holds the caller while the server is down (no reconnect before; D1 precondition)
+	void D6()
+	{
+		Probe sql;
+		start(sql, false);
+		sql.DirectQuery(mark("d6-up").c_str());
+		server_stop();
+		ms(500);
+		std::vector<long long> us;
+		const int n = getenv("D6_N") ? atoi(getenv("D6_N")) : 200;
+		for (int i = 0; i < n; ++i)
+		{
+			const auto c0 = clk::now();
+			sql.DirectQuery(mark("d6-down").c_str());
+			us.push_back(std::chrono::duration_cast<std::chrono::microseconds>(clk::now() - c0).count());
+		}
+		server_start();
+		std::sort(us.begin(), us.end());
+		const long long slow = std::count_if(us.begin(), us.end(), [](long long v) { return v >= 900000; });
+		printf("%s all_failed=%d\n", g_scn, marker("d6-down") == 0 ? 1 : 0);
+		fprintf(stderr, "D6 measured: calls=%d median_us=%lld p99_us=%lld max_us=%lld calls_ge_0.9s=%lld\n", n, us[n / 2],
+			us[n * 99 / 100], us[n - 1], slow);
+	}
+
+	std::string meta(SQLMsg* r)
+	{
+		SQLResult* res = r ? r->Get() : nullptr;
+		std::string first = "-";
+		if (res && res->pSQLResult && res->uiNumRows)
+		{
+			mysql_data_seek(res->pSQLResult, 0);
+			if (MYSQL_ROW row = mysql_fetch_row(res->pSQLResult))
+				first = std::string(row[0] ? row[0] : "NULL") + (mysql_num_fields(res->pSQLResult) > 1 && row[1] ? std::string(":") + row[1] : "");
+			mysql_data_seek(res->pSQLResult, 0);
+		}
+		char buf[200];
+		std::snprintf(buf, sizeof(buf), "{errno=%u get_null=%d result_set=%d rows=%u affected=%u insert_id=%u first=%s}",
+			r ? r->uiSQLErrno : 0u, res ? 0 : 1, res && res->pSQLResult ? 1 : 0, res ? res->uiNumRows : 0u,
+			res ? res->uiAffectedRows : 0u, res ? res->uiInsertID : 0u, first.c_str());
+		return buf;
+	}
+
+	// D7: what callers read after statements that succeed, through DirectQuery and through ReturnQuery (the worker).
+	// Must be identical for the library before and after the change (only failures change).
+	void D7()
+	{
+		const char* steps[][2] = {
+			{ "ins1", "INSERT INTO rt.s (v) VALUES (1)" },
+			{ "ins3", "INSERT INTO rt.s (v) VALUES (2), (3), (4)" },
+			{ "upd3", "UPDATE rt.s SET v = v + 10 WHERE v >= 2" },
+			{ "upd_same", "UPDATE rt.s SET v = v WHERE id = 1" },
+			{ "repl", "REPLACE INTO rt.s (id, v) VALUES (1, 100)" },
+			{ "del", "DELETE FROM rt.s WHERE id = 4" },
+			{ "sel", "SELECT id, v FROM rt.s ORDER BY id" },
+			{ "sel_none", "SELECT id FROM rt.s WHERE id = 999" },
+			{ "ins_sel", "INSERT INTO rt.s (v) SELECT v FROM rt.s" },
+			{ "sel_count", "SELECT COUNT(*) FROM rt.s" },
+			{ "ins_ignore_dup", "INSERT IGNORE INTO rt.s (id, v) VALUES (1, 5)" },
+		};
+		for (int path = 0; path < 2; ++path)
+		{
+			sqlrun(g_admin, "DROP TABLE IF EXISTS rt.s");
+			must(g_admin, "CREATE TABLE rt.s (id INT AUTO_INCREMENT PRIMARY KEY, v INT NOT NULL) ENGINE=InnoDB");
+			Probe sql;
+			start(sql, path == 1);
+			std::string out;
+			for (auto& st : steps)
+			{
+				std::unique_ptr<SQLMsg> r;
+				if (path == 0)
+					r = sql.DirectQuery(st[1]);
+				else
+				{
+					sql.ReturnQuery(st[1], nullptr);
+					for (int i = 0; i < 200 && !sql.PopResult(r); ++i)
+						ms(10);
+				}
+				out += std::string(" ") + st[0] + "=" + meta(r.get());
+			}
+			printf("%s %s:%s\n", g_scn, path == 0 ? "direct" : "worker", out.c_str());
+			if (path == 1)
+				sql.Quit();
+		}
+	}
+
+	// D8: the rows of a result set do not all arrive: the query is killed while the server is sending them
+	// (mysql_read_query_result has already returned the column definitions). Through DirectQuery and ReturnQuery.
+	void D8()
+	{
+		must(g_admin, "CREATE TABLE rt.big (id INT PRIMARY KEY) ENGINE=InnoDB");
+		std::string values;
+		for (int i = 1; i <= 200; ++i)
+			values += (i > 1 ? "," : "") + std::string("(") + std::to_string(i) + ")";
+		must(g_admin, "INSERT INTO rt.big (id) VALUES " + values);
+		const char* q = "SELECT id, REPEAT('x', 1000) AS pad, IF(id = 100, SLEEP(3), 0) AS s FROM rt.big";
+
+		std::string out;
+		for (int path = 0; path < 2; ++path)
+		{
+			Probe sql;
+			start(sql, path == 1);
+			std::thread killer([] {
+				ms(1000);
+				const long long cid = scalar(g_admin,
+					"SELECT IFNULL(MAX(id), 0) FROM information_schema.processlist WHERE user = 'rt' AND info LIKE 'SELECT id, REPEAT%'");
+				if (cid)
+					sqlrun(g_admin, "KILL QUERY " + std::to_string(cid));
+			});
+			std::unique_ptr<SQLMsg> r;
+			if (path == 0)
+				r = sql.DirectQuery(q);
+			else
+			{
+				sql.ReturnQuery(q, nullptr);
+				for (int i = 0; i < 600 && !sql.PopResult(r); ++i)
+					ms(10);
+			}
+			killer.join();
+			out += std::string(" ") + (path == 0 ? "direct" : "worker") + "=" + meta(r.get());
+			if (path == 1)
+				sql.Quit();
+		}
+		printf("%s killed_while_sending_rows:%s\n", g_scn, out.c_str());
+	}
+
+	void D4() { player_create_replica(0); }
+	void D5() { player_create_replica(1); }
 
 	void H1a() { h1(false, false); }
 	void H1b() { h1(true, false); }
@@ -692,7 +1301,7 @@ int main(int argc, char** argv)
 {
 	if (argc < 2)
 	{
-		fprintf(stderr, "usage: %s <R1|R2|R3|R4|R5|G1|G2|K7a|K7b|K7c|K7d|P0|P1|P1b|P1c|P2|P3|P4|P5|C1|C2|C3|C4|H1a|H1b|H1c>\n", argv[0]);
+		fprintf(stderr, "usage: %s <R1|R2|R3|R4|R5|G1|G2|K7a|K7b|K7c|K7d|P0|P1|P1b|P1c|P2|P3|P4|P5|C1|C2|C3|C4|H1a|H1b|H1c|F1|L1|Q1|O1>\n", argv[0]);
 		return 2;
 	}
 	g_scn = argv[1];
@@ -714,6 +1323,12 @@ int main(int argc, char** argv)
 	else if (s == "K7a") K7a(); else if (s == "K7b") K7b(); else if (s == "K7c") K7c(); else if (s == "K7d") K7d();
 	else if (s == "P0") P0(); else if (s == "P1") P1(); else if (s == "P2") P2();
 	else if (s == "P1b") P1b(); else if (s == "P1c") P1c(); else if (s == "P3") P3(); else if (s == "P4") P4(); else if (s == "P5") P5();
+#ifdef HAVE_2A
+	else if (s == "F1") F1(); else if (s == "L1") L1(); else if (s == "Q1") Q1(); else if (s == "O1") O1();
+	else if (s == "M1") M1(); else if (s == "L2") L2(); else if (s == "G3") G3();
+#endif
+	else if (s == "D1") D1(); else if (s == "D2") D2(); else if (s == "D3") D3(); else if (s == "D4") D4(); else if (s == "D5") D5(); else if (s == "D6") D6();
+	else if (s == "D7") D7(); else if (s == "D8") D8();
 	else if (s == "C1") C1(); else if (s == "C2") C2(); else if (s == "C3") C3(); else if (s == "C4") C4();
 	else if (s == "H1a") H1a(); else if (s == "H1b") H1b(); else if (s == "H1c") H1c();
 	else die("unknown scenario", nullptr);

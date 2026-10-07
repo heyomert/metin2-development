@@ -3,6 +3,7 @@
 #include "metrics_writer.h"
 #include "build_identity.h"
 #include "libsql/AsyncSQL.h"
+#include "sql_failure_ledger.h"
 
 #include <chrono>
 #include <cstdarg>
@@ -37,6 +38,11 @@ public:
 		c.target = target;
 		c.role = role;
 		c.sql = sql;
+
+		// The same name in syserr lines and the failure ledger
+		char label[96];
+		std::snprintf(label, sizeof(label), "%s.%s.%s", owner, target, role);
+		sql->SetLabel(label);
 	}
 
 	void Start(Clock::time_point now)
@@ -76,6 +82,23 @@ public:
 
 			++sum.conns;
 			sum.reconnect += dReconnect;
+			sum.qBytes += cur.queuedBytes;
+			sum.resNotDelivered += cur.resNotDelivered - p.resNotDelivered;
+			sum.resRolledBack += cur.resRolledBack - p.resRolledBack;
+			sum.resAmbiguous += cur.resAmbiguous - p.resAmbiguous;
+			sum.resPermanent += cur.resPermanent - p.resPermanent;
+			sum.resUnexecuted += cur.resUnexecutedAtQuit - p.resUnexecutedAtQuit;
+			sum.polTransient += cur.polTransient - p.polTransient;
+			sum.polConfig += cur.polConfigFatal - p.polConfigFatal;
+			sum.polResource += cur.polResourceLimit - p.polResourceLimit;
+			sum.polInternal += cur.polInternal - p.polInternal;
+			sum.polQuery += cur.polQueryPermanent - p.polQueryPermanent;
+			sum.polAmbiguous += cur.polAmbiguous - p.polAmbiguous;
+			sum.failSend += cur.phaseSendFail - p.phaseSendFail;
+			sum.failRead += cur.phaseReadFail - p.phaseReadFail;
+			sum.sessionCheckFail += cur.sessionCheckFail - p.sessionCheckFail;
+			sum.logSuppressed += cur.logSuppressed - p.logSuppressed;
+			sum.failureEvents += cur.failureEvents - p.failureEvents;
 			for (int e = 0; e < SQL_ERRNO_BUCKET_MAX; ++e)
 				sum.errnoCount[e] += cur.errnoCount[e] - p.errnoCount[e];
 
@@ -108,7 +131,7 @@ public:
 			}
 
 			const bool anomaly = dErr || dRetry || dReconnect || cur.stuckMs > 0 || cur.oldestAgeMs >= OLDEST_ANOMALY_MS ||
-				(cur.threaded && !cur.workerRunning);
+				(cur.threaded && !cur.workerRunning) || cur.sessionCheckFail != p.sessionCheckFail;
 			if (anomaly || periodic)
 			{
 				const char* reason = final ? "final" : m_first ? "start" : anomaly ? "anomaly" : "periodic";
@@ -119,7 +142,7 @@ public:
 			c.prev = cur;
 		}
 
-		char line[1536];
+		char line[2048];
 		size_t len = Append(line, sizeof(line), 0,
 			"schema=1 src=sql kind=sum host=%s pid=%ld uptime_s=%lld window_ms=%lld first=%d"
 			" conns=%d q=%llu cq=%llu rq=%llu oldest_ms_max=%lld stuck_conns=%d workers_down=%d"
@@ -129,10 +152,22 @@ public:
 			U(sum.pushed), U(sum.ok), U(sum.err), U(sum.retry), U(sum.reconnect));
 		len = AppendErrno(line, sizeof(line), len, sum.errnoCount, "");
 		len = Append(line, sizeof(line), len,
-			" exec_n=%llu exec_us=%llu exec_max_us=%llu direct_n=%llu direct_err=%llu direct_max_ms=%llu%s"
-			" metrics_dropped=%llu metrics_write_errors=%llu%s",
+			" exec_n=%llu exec_us=%llu exec_max_us=%llu direct_n=%llu direct_err=%llu direct_max_ms=%llu%s",
 			U(sum.execN), U(sum.execUs), U(sum.execMaxUs), U(sum.directN), U(sum.directErr), U(sum.directMaxMs),
-			extraSum ? extraSum : "", out.Dropped(), out.WriteErrors(), M2BuildFields());
+			extraSum ? extraSum : "");
+		// Step 2a (docs/monitoring.md): queue bytes, failed messages by result and by policy, failed attempts by phase
+		len = Append(line, sizeof(line), len,
+			" q_bytes=%llu res_not_delivered=%llu res_rolled_back=%llu res_ambiguous=%llu res_permanent=%llu"
+			" res_unexecuted_at_quit=%llu pol_transient=%llu pol_config_fatal=%llu pol_resource_limit=%llu"
+			" pol_internal=%llu pol_query_permanent=%llu pol_ambiguous=%llu fail_send=%llu fail_read=%llu"
+			" session_check_fail=%llu log_suppressed=%llu ledger_events=%llu ledger_dropped=%llu ledger_write_errors=%llu",
+			U(sum.qBytes), U(sum.resNotDelivered), U(sum.resRolledBack), U(sum.resAmbiguous), U(sum.resPermanent),
+			U(sum.resUnexecuted), U(sum.polTransient), U(sum.polConfig), U(sum.polResource), U(sum.polInternal),
+			U(sum.polQuery), U(sum.polAmbiguous), U(sum.failSend), U(sum.failRead), U(sum.sessionCheckFail),
+			U(sum.logSuppressed), U(sum.failureEvents), sql_failure_ledger::Instance().Dropped(),
+			sql_failure_ledger::Instance().WriteErrors());
+		len = Append(line, sizeof(line), len, " metrics_dropped=%llu metrics_write_errors=%llu%s",
+			out.Dropped(), out.WriteErrors(), M2BuildFields());
 		out.Write(line, len);
 
 		m_windowStart = now;
@@ -159,6 +194,10 @@ private:
 		uint64_t errnoCount[SQL_ERRNO_BUCKET_MAX] = {};
 		uint64_t execN = 0, execUs = 0, execMaxUs = 0;
 		uint64_t directN = 0, directErr = 0, directMaxMs = 0;
+		uint64_t qBytes = 0;
+		uint64_t resNotDelivered = 0, resRolledBack = 0, resAmbiguous = 0, resPermanent = 0, resUnexecuted = 0;
+		uint64_t polTransient = 0, polConfig = 0, polResource = 0, polInternal = 0, polQuery = 0, polAmbiguous = 0;
+		uint64_t failSend = 0, failRead = 0, sessionCheckFail = 0, logSuppressed = 0, failureEvents = 0;
 	};
 
 	static unsigned long long U(uint64_t v) { return (unsigned long long) v; }
@@ -198,7 +237,7 @@ private:
 	void WriteConn(metrics_writer& out, const char* host, long pid, long long uptime, const Conn& c, const SQLStats& s,
 		const char* reason, bool withQuit)
 	{
-		char line[1024];
+		char line[2048];
 		size_t len = Append(line, sizeof(line), 0,
 			"schema=1 src=sql kind=conn host=%s pid=%ld uptime_s=%lld owner=%s target=%s role=%s mode=%s reason=%s",
 			host, pid, uptime, c.owner, c.target, c.role, s.threaded ? "thread" : "direct", reason);
@@ -224,6 +263,16 @@ private:
 			len = Append(line, sizeof(line), len, " exec_n_total=%llu exec_ms_total=%llu exec_max_ms=%llu",
 				U(s.execCount), U(s.execUsTotal / 1000), U(c.execMaxSinceLine / 1000));
 		}
+
+		len = Append(line, sizeof(line), len,
+			" q_bytes=%llu res_not_delivered_total=%llu res_rolled_back_total=%llu res_ambiguous_total=%llu"
+			" res_permanent_total=%llu res_unexecuted_at_quit_total=%llu pol_transient_total=%llu pol_config_fatal_total=%llu"
+			" pol_resource_limit_total=%llu pol_internal_total=%llu pol_query_permanent_total=%llu pol_ambiguous_total=%llu"
+			" fail_send_total=%llu fail_read_total=%llu session_check_fail_total=%llu log_suppressed_total=%llu",
+			U(s.queuedBytes), U(s.resNotDelivered), U(s.resRolledBack), U(s.resAmbiguous), U(s.resPermanent),
+			U(s.resUnexecutedAtQuit), U(s.polTransient), U(s.polConfigFatal), U(s.polResourceLimit), U(s.polInternal),
+			U(s.polQueryPermanent), U(s.polAmbiguous), U(s.phaseSendFail), U(s.phaseReadFail), U(s.sessionCheckFail),
+			U(s.logSuppressed));
 
 		out.Write(line, len);
 	}

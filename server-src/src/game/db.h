@@ -89,6 +89,7 @@ class DBManager : public singleton<DBManager>
 		CLoginData *		GetLoginData(DWORD dwKey);
 
 		DWORD			CountQuery()		{ return m_sql.CountQuery(); }
+		DWORD			CountPending() const	{ return m_sql.CountPending(); }	// main + copy queue
 		DWORD			CountQueryResult()	{ return m_sql.CountResult(); }
 		void			ResetQueryResult()	{ m_sql.ResetQueryFinished(); }
 
