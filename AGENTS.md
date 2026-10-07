@@ -42,6 +42,7 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
 - **Dosyanın var olması ≠ aktif.** Server `game` build'i klasördeki bütün `.cpp`'leri derler (`GLOB_RECURSE`), bu yüzden aktifliği flag'ler, kayıtlar ve çağrı yolları belirler. Quest'ler ancak `server/share/locale/english/quest/locale_list`'te varsa derlenir.
 - **Client exe her zaman `client-src`'den derlenir.** Upstream'in hazır exe'si kaynaktan eski kaldı ve login'i bozdu (`docs/worklog/2026-10-04-login-input-secret-mode.md`).
 - **Kök nedeni düzelt.** Hata gizleyen yama yok (`hasattr` guard'ları, yutulan hatalar). Kod ile şema/config çelişirse dışarıda kalan tarafı bul ve onu düzelt.
+- **Değişiklikten sonra kendi çözümünü çürütmeye çalış** (`docs/engineering/change-impact.md` §6, derinlik risk seviyesine göre). Yan etki, yeni hata yolu ve yanlış varsayım ara; kanıt çelişirse savunma, daralt ya da değiştir. Başarısız testi ürüne yüklemeden önce testi doğrula. Yüksek riskte, etkilenmemesi gereken başarı yolunu önce/sonra aynı senaryoyla kanıtla. PASS'in neyi kanıtlamadığını yaz.
 - **Katmanlar arası değişiklikler birlikte yapılır:** client C++ ↔ Python UI ↔ server game ↔ db ↔ paketler ↔ proto/data ↔ quest'ler ↔ runtime config.
 - **Diğer Metin2 kaynakları** (Masaüstündeki Anka2, MartySama, lorenzo vb.) bir bulguyu destekleyebilir; değişikliğin asıl dayanağı olamaz.
 - **Asla commit'leme:** gizli bilgiler, `client/assets/root/serverinfo.py`'deki yerel VM IP'si, `client/config/locale.cfg`, `client/log/`, `client/pack/`, `client-src/build/`.

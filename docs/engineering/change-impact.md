@@ -4,7 +4,7 @@ Bu bir MMORPG: bir değişiklik sadece dokunduğu yeri değil, bütün oyunu etk
 değil; stabilite, performans, güvenlik ve veri bütünlüğünü koruyan değişiklik.
 
 **Kural:** Anlamlı her değişiklikten önce bu analiz yapılır ve sonucu PR açıklamasına eklenir.
-Yüksek riskli işlerde sıra: **analiz → kullanıcı onayı → kod.**
+Yüksek riskli işlerde sıra: **analiz → kullanıcı onayı → kod → doğrulama (§6).**
 
 Analizin cevapları kanıta dayanır (`yol:satır`, log, test). Bilinmeyen cevap "bilinmiyor" yazılır, tahmin edilmez.
 
@@ -98,6 +98,38 @@ Genel Metin2 bilgisi kanıt değildir.
 
 ---
 
+## 6. Doğrulama (değişiklikten sonra)
+
+§2 değişiklikten **önce** düşündürür; bu bölüm değişiklik yapıldıktan **sonra** uygulanır. Derinlik §1'e göre: **Düşük**'te
+bir cümle ("neyi kontrol ettim") yeter; **Orta**'da ilgili maddeler; **Yüksek**'te hepsi.
+
+1. **Kendi çözümünü çürütmeye çalış.** Değişikliği kendin red-team et: yan etki, yeni hata yolu, davranış değişikliği, yanlış
+   varsayım. Şu soruyu cevapla: "Bu değişiklik hangi durumda yanlış sonuç üretir ya da bir hatayı başarı gibi gösterir?"
+   Kanıt çözümle çelişirse mevcut yaklaşımı savunma; daralt, tasarımı değiştir ya da geri çek. Commit'lenmemiş kendi
+   değişikliğini geri almak serbesttir; commit'lenmiş ya da push'lanmış bir şeyi geri almak `AGENTS.md`'deki "Önce sor"a tabidir.
+2. **Test hatası ile ürün hatasını ayır.** Bir test ya da reproducer başarısızsa veya tekrarlarda farklı sonuç veriyorsa, sonucu
+   doğrudan ürüne yükleme. Önce testin kendisini doğrula: ölçüm sırası, fixture/harness, eşzamanlılık, ortam. Sonra aynı
+   senaryoyu yeniden üret. Ürüne bağlamadan önce mümkünse aynı senaryoyu eski sürümde de koş; orada da oluyorsa sebep yeni
+   değişiklik değildir.
+3. **Hata yolunu düzeltirken başarı yolunu koruduğunu kanıtla.** Yüksek riskte, mümkün olan her yerde aynı ya da eşdeğer
+   senaryoyu değişiklik öncesi ve sonrası koş. Etkilenmemesi gereken doğru davranışın (başarılı işlem, dönen alanlar, sıra,
+   performans) aynı kaldığını göster. Hedef yalnız yeni testin PASS olması değildir.
+4. **PASS tek başına yeterli değildir.** Her test için neyi kanıtladığını, neyi kanıtlamadığını ve kalan bilinmeyenleri yaz.
+   Testin hedeflediği durumu gerçekten oluşturduğunu kontrol et (taşma testi taşma üretti mi, hata enjeksiyonu hatayı
+   tetikledi mi). Yeni davranış baseline'dan farklıysa farkın beklenen ve gerekçeli olduğunu kanıtla; açıklanamayan fark
+   varken işi bitmiş sayma.
+
+**Örnek (PR #22, AsyncSQL 2a):**
+- Red-team ikinci bir boşluk buldu: satırları okunamayan SELECT "uygulandı" görünüyordu.
+- Bir sıra değişikliğinin yan etkisi görüldü ve değişiklik daraltıldı.
+- Bir çökme testin kendi hatasıydı; ~1 sn'lik takılma yeni koda değil, işletim sisteminin RST sınırına aitti. Eski sürümde de
+  aynı ölçüldü.
+- Başarılı ifadelerin sonuçları eski kütüphaneyle bayt bayt karşılaştırıldı. Eşli A/B ölçümü, bir struct alanının üretici
+  maliyetini yakaladı.
+- Bir taşma testi ilk denemede PASS verdi ama taşma üretmemişti.
+
+---
+
 ## PR'a eklenecek kısa biçim
 
 Amaç formu doldurmak değil, **bilinmeyenleri görünür kılmak.** Analiz yapılmadan doldurulmuş form, hiç doldurulmamış formdan daha kötüdür.
@@ -106,6 +138,8 @@ Amaç formu doldurmak değil, **bilinmeyenleri görünür kılmak.** Analiz yap�
 - **Düşük:** sadece ilk satır (`Risk: Düşük`) ve 1–3 satır özet. Alanların hepsini doldurma.
 - **Orta:** ilgili alanları doldur; ilgisizleri tek satırda `Etkilenmiyor — <neden>` yap.
 - **Yüksek:** bütün alanlar.
+- **Doğrulama alanları (§6):** `Başarı yolu önce/sonra` yüksek riskte zorunludur. `Kanıtlamadığı / kalan bilinmeyen` orta ve
+  yüksek riskte zorunludur.
 
 **Her alan şu üç cevaptan biri olmalı. Boş bırakılmaz, tahminle doldurulmaz:**
 1. **Kanıtlı cevap:** kısa cevap + kanıt (`yol:satır`, log satırı, test sonucu).
@@ -126,9 +160,10 @@ Rollback: …             Test: …
 Monitoring/log: …       Panel/agent teşhisi: …
 Doküman: …              Teknik borç: …
 Alternatif değerlendirildi mi: …
+Başarı yolu önce/sonra: …   Kanıtlamadığı / kalan bilinmeyen: …
 ```
 
-**Örnek** (PR #5, P2P firewall; üç cevap biçimi de görünüyor):
+**Örnek** (PR #5, P2P firewall; üç cevap biçimi de görünüyor; §6 alanlarından önce yazıldı):
 
 ```text
 Etki analizi — Risk: Yüksek
