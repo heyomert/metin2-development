@@ -30,5 +30,6 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-06 | [Derleme kimliği ve game+db kurulumu (T-2); yanlış pathspec, yok sayılan-derlenen kaynak, FreeBSD make saniye çözünürlüğü](2026-10-06-build-identity.md) | özellik / karar / ortam | server-src / build / runtime / tools | Aktif | #20 |
 | 2026-10-07 | [`syserr.log` yeniden başlatmada korunuyor (T-1); libc++ `symlink_status` tuzağı, çökmede satır kaybı](2026-10-07-syserr-archive.md) | özellik / karar | server-src / runtime / tools | Aktif | #21 |
 | 2026-10-07 | [AsyncSQL düzeltmesi (DB adım 2a): sonuç/politika ayrımı, kör tekrar kaldırıldı, üst veri logları; `mysql_real_query` `-1` okuma evresinde de dönüyor, çoklu ifade hatası görünmüyor](2026-10-07-asyncsql-2a.md) | düzeltme / karar / ortam | server-src / runtime / tools | Aktif | #22 |
+| 2026-10-07 | [PR #22 test VM kabul testi ve regresyon tabanı; "şimdi" sinyali ve önbellek/kalıcılık tuzakları](2026-10-07-pr22-acceptance.md) | karar / ortam | server-src / runtime / tools | Aktif | #22 |
 
 <!-- Eski yıllar: README-<yıl>.md -->

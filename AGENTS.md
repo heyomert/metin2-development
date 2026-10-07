@@ -26,6 +26,7 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
    - `docs/build-and-run.md` — derleme, paketleme, quest derleme, VM, servis, MariaDB
    - `docs/game-facts.md` — level sınırı, imparatorluklar, haritalar, aktif sistemler/zindanlar
    - `docs/engineering/change-impact.md` — her anlamlı değişiklikten önce etki analizi
+   - `docs/engineering/regression-baseline.md` — gerçek client regresyon senaryoları; hangileri gerekir: `change-impact.md` §7
    - `docs/roadmap.md` — fazlar, öncelikler, açık konular (kritik güvenlik bulguları dahil), teknik borç
    - `docs/production-checklist.md` — sunucu açılmadan önce geçilmesi gereken kapılar (P2P firewall dahil)
    - `docs/monitoring.md` — sunucu sağlık kaydı (lag, yük, oyuncu sayısı): alanlar ve okuma; "lag var mıydı" sorusuna önce buradan bak; production sorununda önce "Olay teşhisi" sırasını izle
