@@ -1,10 +1,11 @@
-# DB adım 2: AsyncSQL güvenilirlik düzeltmesi — kök neden ve etki analizi (revizyon 3)
+# DB adım 2: AsyncSQL güvenilirlik düzeltmesi — kök neden ve etki analizi (revizyon 4)
 
 **Durum: ANALİZ, onay bekliyor (2026-10-07).** Runtime kodu, şema ve canlı veri değişmedi. Bu revizyon kullanıcı
 incelemesine göre yeniden yazıldı: hata kodları Connector kaynağından tek tek çıkarıldı, 1205/1213 gerçek sorgu aileleri ve
 gerçek motorlarla test edildi, kısmi paket / H-1 / K7 için reproducer'lar eklendi. Revizyon 1'in iddiaları **yanlıştı ve
 geri çekildi** (bölüm 0). **Revizyon 3:** sınıflandırma hata koduna değil **başarısızlık evresine** dayanıyor (bölüm 1); 2a
-kapsamı kullanıcının kabul şartlarıyla yeniden yazıldı (bölüm 10). Etiketler: **Kanıtlı** (kod `yol:satır`, test ya da komut çıktısı), **Kanıt yok** (ne kontrol edildiği
+kapsamı kullanıcının kabul şartlarıyla yeniden yazıldı (bölüm 10). **Revizyon 4:** teslim/yürütme sonucu ile tekrar politikası
+iki ayrı eksen (bölüm 1b; C1–C4 probları); mevcut ham SQL loglarının hassas veri denetimi (bölüm 7b). Etiketler: **Kanıtlı** (kod `yol:satır`, test ya da komut çıktısı), **Kanıt yok** (ne kontrol edildiği
 yazılı), **Öneri** (karar senin). Kaynak yollar `server-src/src/` altında.
 
 **Kanıt kapsamı (bütün sonuçlar bununla sınırlı):** vendored MariaDB Connector/C **3.4.5**, MariaDB Server **11.8.9**, TCP,
@@ -16,7 +17,7 @@ yükseltme, TLS, trigger, transaction) sonuçlar geçersizdir; prob paketi yenid
 **Araçlar:** `tools/sql-reliability/sqlrt.cpp` + `run.sh` (S1–S12, değişmez baseline) ve yeni
 `tools/sql-reliability/sqlprobe.cpp` + `probe.sh` (bu revizyonun probları; gerçek `item`/`quest`/`player`/`guild_member`/
 `account` DDL'leri `server/sql/*.sql`'den, motorlar canlıyla aynı). Geçici MariaDB, fail-closed koruma (geçici datadir +
-rastgele token). Son koşular: 22 senaryo, 3'er tekrar, koruma öz-testi 3/3 ret; K7a/K7b dışında hepsi 3/3 birebir (K7a/b'de sadece ölçülen sayılar
+rastgele token). Son koşular: 26 senaryo, 3'er tekrar, koruma öz-testi 3/3 ret; K7a/K7b dışında hepsi 3/3 birebir (K7a/b'de sadece ölçülen sayılar
 değişiyor, davranış aynı).
 
 ## 0. Revizyon 1'den geri çekilenler
@@ -49,9 +50,9 @@ Yollar `server-src/vendor/mariadb-connector-c-3.4.5/` altında. **Bugünkü Asyn
 - Sunucu eksik paketi **çalıştırmıyor**: üç kesilme noktası, 3/3: yükün yarısı (P1), başlığın 2 baytı (P1b), son bayt hariç her
   şey (P1c) → uygulanmadı. Kontrol (P0): tam paket → uygulandı.
 - Uçtan uca: P3 sunucu kapalı → `rc=-1`, 2002, uygulanmadı; G1 aynı durumda AsyncSQL tekrarıyla sunucu dönünce bir kez uygulandı.
-- **Sonuç:** `rc = -1` → **teslim edilmedi → uygulanmadı** → her aile için tekrar güvenli (hata kodu ne olursa olsun: 2002, 2006,
-  2014, yeniden bağlanmada sunucunun döndürdüğü 1040/1045…). Dikkat: "teslim edilmedi" ≠ "geçici": 1045 gibi kalıcı bağlantı
-  hataları da bu evrede döner (bölüm 5'teki kesinti politikasına bağlı).
+- **Sonuç:** `rc = -1` → **teslim edilmedi → uygulanmadı** (hata kodu ne olursa olsun). Bu, tekrarın **zararsız** olduğunu
+  söyler, **yapılacağını değil**: 1045/1049/1040/1226 gibi yapılandırma/kaynak hataları da bu evrede döner (C1–C4); tekrar
+  kararı ikinci eksende (bölüm 1b).
 
 **Okuma evresi (`rc = 1`) — istek tamamı yazıldı:**
 - Bağlantı hatası (2013 vb.) → **belirsiz:** P2 (tam paket, cevap okunmadan kopma) → **uygulandı**; P4 (yürütmede bağlantı
@@ -75,6 +76,45 @@ Yollar `server-src/vendor/mariadb-connector-c-3.4.5/` altında. **Bugünkü Asyn
 **Sözleşme (Öneri):** hata kodu teslim/yürütme garantisi **vermez**. Tekrar kararının girdisi **(evre, kod, aile)**:
 `rc = -1` → teslim edilmedi; `rc = 1` + bağlantı hatası → belirsiz; `rc = 1` + sunucu hata paketi → aile kanıtına göre; evre
 bilinmiyorsa → belirsiz. Kanıt kapsamı: bu Connector sürümü (gönderim yolu ve yazma döngüsü) ve bu sunucu sürümü (P1/P1b/P1c).
+
+## 1b. İki ayrı eksen: sonuç ve tekrar politikası (revizyon 4)
+"Teslim edilmedi" **otomatik tekrar demek değil.** Her başarısızlık iki bağımsız eksende sınıflanır:
+- **Sonuç (ne oldu):** `APPLIED` · `NOT_DELIVERED` · `ROLLED_BACK` · `AMBIGUOUS` · `PERMANENT` (sorgu hatası) · `UNEXECUTED_AT_QUIT`.
+- **Tekrar politikası (ne yapılır):** `TRANSIENT_CONNECTION` · `RETRYABLE_AFTER_PROVEN_ROLLBACK` · `QUERY_PERMANENT` ·
+  `CONNECTION_CONFIG_FATAL` · `RESOURCE_LIMIT` · `INTERNAL_PROTOCOL_STATE` · `AMBIGUOUS_NO_RETRY`.
+  "Tekrar etmiyoruz" ile "kalıcı hata" aynı şey değil: `RESOURCE_LIMIT` geçici bir doygunluk olabilir; 2a onu tekrar etmez ama
+  kalıcı da saymaz.
+
+**Kanıt (`sqlprobe` C1–C4, 3/3):** yeniden bağlanma gereken bir ifadede bağlantı/yapılandırma hataları **gönderim evresinde**
+(`rc=-1`) döner — ifade teslim edilmedi ama durum geçici değil. Bugünkü kod bunların hiçbirinde döngüye girmiyor (tek
+başarısızlık satırı, `retrying` 0); yani **bugün de** kayıp var, döngü yok.
+| Prob | Durum | `rc` | Kod |
+|---|---|---|---|
+| C1 | kullanıcının şifresi değişti (access denied) | -1 | 1045 |
+| C2 | veritabanı silindi (unknown database) | -1 | 1049 |
+| C3 | sunucu geneli bağlantı sınırı dolu (ayrıcalıksız kullanıcı; `max_connections` en az 10) | -1 | 1040 |
+| C4 | kullanıcı başına bağlantı sınırı (`MAX_USER_CONNECTIONS`) | -1 | 1226 |
+| P3 / G1 | sunucu kapalı | -1 | 2002 |
+| S11 | bekleyen sonuç varken gönderim | -1 | 2014 |
+
+**Eşleme (Öneri; 2a davranışı):**
+| Evre + kod | Sonuç | Politika | 2a davranışı |
+|---|---|---|---|
+| `rc=-1` + 2002, 2006, 2013 (sunucuya ulaşılamıyor / bağlantı koptu) | NOT_DELIVERED | **TRANSIENT_CONNECTION** | yerinde tekrar, 100 ms aralık (bugünkü değer), `Quit` ile kesilir; `syserr`'e yalnız **durum değişiminde** (ilk başarısızlık, düzelme) bir satır; her deneme sayaçta |
+| `rc=-1` + 1045, 1044, 1049, 1129, 1130, 2005, 2059 (kimlik, veritabanı, host, yapılandırma) | NOT_DELIVERED | **CONNECTION_CONFIG_FATAL** | **tekrar yok:** ileti başarısız (ledger + sayaç); `syserr`'e durum değişiminde bir kritik satır. Sonraki ileti tek bir bağlantı denemesi yapar, beklemez; 100 ms döngü yok. (Ne yapılacağı — tutmak, bakım moduna geçmek — ayrı karar; bu revizyon yeni politika icat etmez) |
+| `rc=-1` + 1040, 1203, 1226 (sunucu/kullanıcı bağlantı ya da kaynak sınırı) | NOT_DELIVERED | **RESOURCE_LIMIT** (geçici doygunluk olabilir; kalıcı sayılmaz) | **otomatik tekrar şimdilik yok:** ileti başarısız (ledger + sayaç + durum değişiminde bir satır). Eşik, bekleme ya da degraded davranış eklenmez; ileride kaynak/degraded politikasına bırakılır |
+| `rc=-1` + 2014, 2027, 2008, 2000 | NOT_DELIVERED | **INTERNAL_PROTOCOL_STATE** | tekrar yok; ileti başarısız + kritik satır; 2014'ün kaynağı (S11) 2a'da düzeltiliyor |
+| `rc=-1` + 2020 (paket çok büyük) | NOT_DELIVERED | **QUERY_PERMANENT** | tekrar yok (ifadeye özgü) |
+| `rc=-1` + **listede olmayan kod** | NOT_DELIVERED | **CONNECTION_CONFIG_FATAL** (varsayılan) | tekrar yok — bilinmeyen kod geçici sayılmaz |
+| `rc=1` + 1205 / 1213 | `rollback_proven` ailede ROLLED_BACK; **işaretsiz ailede AMBIGUOUS** (kanıt yoksa belirsiz) | işaretli ailede RETRYABLE_AFTER_PROVEN_ROLLBACK; işaretsizde AMBIGUOUS_NO_RETRY | 2a'da hiçbir aile işaretli değil → tekrar yok, ledger'a AMBIGUOUS + hata kodu |
+| `rc=1` + 2013, 1158–1161, 1927, 1053 | AMBIGUOUS | AMBIGUOUS_NO_RETRY (`idempotent` aile hariç) | tekrar yok; ledger'a AMBIGUOUS |
+| `rc=1` + diğer sunucu hataları | PERMANENT | QUERY_PERMANENT | tekrar yok |
+| Kapanışta işlenemeyen | UNEXECUTED_AT_QUIT | — | ledger + sayaç |
+
+**Döngü olmadığının kanıtı (2a testi):** C1–C4 yeniden koşulur → her ileti için **tek** deneme, `syserr`'de durum değişimi başına
+bir satır, worker bir sonraki iletiye geçer; 100 ms döngü yalnız TRANSIENT_CONNECTION'da (G1/P3) ve `Quit` ile kesilir.
+Sınırlama: sunucu yeniden başlarken el sıkışmada 1053 (shutdown in progress) gibi başka kodlar dönebilir; **kanıt olana kadar
+transient listesinde değiller** (varsayılan: tekrar yok); bu durum MariaDB yeniden başlatma testinde ölçülecek.
 
 ## 2. 1205 / 1213: gerçek sorgu aileleri ve motorlar (Kanıtlı, `sqlprobe` R1–R5, 3/3)
 Koşullar: oturum `autocommit=1`, açık transaction yok, tek ifade, trigger yok, çok ifade yok (canlı ve probe aynı).
@@ -101,7 +141,7 @@ Semantik sözlüğü: **at-most-once** (en çok bir kez; belirsizlikte tekrar yo
 rollback** (geri alma kanıtlıysa tekrar) · **idempotent convergence** (tekrar aynı son duruma götürür) · **at-least-once**
 (kayıp yok, çift olabilir) · **ambiguous outcome** (sonuç bilinmiyor; kayda geçer, otomatik karar yok).
 
-| Aile | Tablo / motor | Yol / bağlantı | Biçim | Teslim edilmedi (`rc=-1`) | 1205/1213 | Belirsiz (`rc=1` bağlantı hatası, ya da evre bilinmiyor) |
+| Aile | Tablo / motor | Yol / bağlantı | Biçim | Teslim edilmedi + TRANSIENT_CONNECTION | 1205/1213 | Belirsiz (`rc=1` bağlantı hatası, ya da evre bilinmiyor) |
 |---|---|---|---|---|---|---|
 | item kaydet | item / InnoDB | db main `ReturnQuery` | mutlak tam satır `REPLACE` | tekrar | tekrar (R1) | **idempotent convergence** (aynı FIFO'da yerinde) |
 | item sil (id) | item / InnoDB | db main / async | `DELETE … WHERE id` | tekrar | test yok → tekrar yok | idempotent convergence |
@@ -118,12 +158,14 @@ rollback** (geri alma kanıtlıysa tekrar) · **idempotent convergence** (tekrar
 | lonca seviye/puan | guild / InnoDB | game async | mutlak `UPDATE` | tekrar | test yok | idempotent convergence |
 | yüklemeler (`SELECT`) | çeşitli | `ReturnQuery` | okuma | tekrar | tekrar | tekrar (yan etki yok) |
 
-**Varsayılan (işaretlenmemiş aile):** sadece "teslim edilmedi" (`rc=-1`) tekrar edilir; 1205/1213 ve belirsizlikte tekrar yok,
+**Varsayılan (işaretlenmemiş aile):** sadece "teslim edilmedi + TRANSIENT_CONNECTION" tekrar edilir; yapılandırma/iç hatalar,
+1205/1213 ve belirsizlikte tekrar yok,
 kayda geçer. Bir aile ancak testle kanıtlandıktan sonra daha geniş sınıfa alınır. Hiçbir aile için **exactly-once**
 denmez: belirsiz ağ hatasında uygulama düzeyinde tekil işlem anahtarı (ör. ödeme/yükleme kimliği) olmadan bu garanti yok.
 
 ## 4. Belirsizlik sonucu (2002 / 2006 / 2013)
-- **Evre biliniyorsa:** `rc=-1` → teslim edilmedi (kod + P1/P1b/P1c + P3) → her aile için tekrar güvenli. `rc=1` + bağlantı
+- **Evre biliniyorsa:** `rc=-1` → teslim edilmedi (kod + P1/P1b/P1c + P3) → her aile için tekrar **zararsız**; tekrar edilip
+  edilmeyeceği ikinci eksende (bölüm 1b: yalnız TRANSIENT_CONNECTION). `rc=1` + bağlantı
   hatası → belirsiz (P2 uygulandı; P4/P5 uygulanmadı) → sadece idempotent convergence ailelerinde tekrar.
 - **Evre bilinmiyorsa (yalnız hata kodu):** 2002, 2006, 2013 ve bütün bağlantı hataları **belirsiz**; kör tekrar yok.
 - **2a'nın şartı:** AsyncSQL `mysql_real_query`'nin dönüş değerini saklar ve sınıflandırmaya katar; evresi bilinmeyen hiçbir
@@ -183,6 +225,56 @@ performans metadata'sı. **Tutulmaz:** hesap id, oyuncu id/pid, item id, IP, isi
 ör. 6 haneli depo şifresi, sözlükle bulunabilir), sorgu parametreleri. 2b ya da kurtarma tasarımında varlık kimliği gerçekten
 gerekirse gizlilik/erişim/saklama etkisi ayrıca incelenip karar verilir.
 
+## 7b. Mevcut ham SQL logları: hassas veri denetimi (revizyon 4, Kanıtlı kod)
+Bugün başarısızlıkta ya da yavaşlıkta **ham SQL** `syserr`/`syslog`'a yazılıyor. Bu loglar 0644 (herkes okuyabilir; roadmap 1.4,
+A-12) ve 7 gün (syslog) / 30 çalışma (syserr) saklanıyor. Test VM'de bugün bu satırlardan **hiç yok** (sayım, içerik basılmadı:
+`QUERY_FLUSH`, `LONG INTERVAL`, `query failed`, `SLOW-*` = 0), yani yol var, olay henüz olmamış.
+
+| Yol | Log | Ne zaman | |
+|---|---|---|---|
+| `libsql/AsyncSQL.cpp:298-302` | syserr | `DirectQuery` hatası | ham SQL |
+| `libsql/AsyncSQL.cpp:580-581` | syserr | worker hatası | ham SQL |
+| `libsql/AsyncSQL.cpp:622-623` | syslog | worker'da > 0,5 sn süren **her** ifade | ham SQL |
+| `libsql/AsyncSQL.cpp:679-680` | syserr | kapanış döngüsünde hata | ham SQL |
+| `libsql/AsyncSQL.cpp:704` | syslog | kapanışta kuyruğa kalan **her** ifade (`QUERY_FLUSH`) | ham SQL |
+| `libsql/AsyncSQL.cpp:756` | syserr | escape tamponu yetmezse | kaynak metnin ilk 255 karakteri |
+| `db/DBManager.cpp:125` | syserr | db `DirectQuery` > eşik (`[SLOW-DB]`) | ham SQL |
+| `game/db.cpp:71` | syserr | game `DirectQuery` > 200 ms (`[SLOW-GAME]`) | ham SQL |
+
+**Bu yollara düşebilecek hassas değerler (gerçek sorgu envanteri):**
+- **Kimlik doğrulama:** auth giriş sorgusu `SELECT '<x>',password,… FROM account WHERE login='<login>'` (`game/input_auth.cpp:288-299`) —
+  `<x>` normal yolda **şifre hash'i** (tuzsuz MySQL native hash, sözlükle kırılabilir). Bu ifade game `m_sql` worker'ında
+  `ReturnQuery` ile gidiyor → hata olursa `:580`, yavaşsa `:622` yoluyla loga düşer. ("Channel service" dalı için aşağıya bak.)
+- **Depo şifresi (açık metin):** `UPDATE safebox SET password='…'` (`db/ClientManager.cpp:848`) → hata `:580`, yavaşlık `:622`,
+  kapanışta kuyrukta kalırsa `:704`.
+- **Hesap/karakter adları, IP, GM komutları:** log `INSERT`'leri (`game/log.cpp:53, 80, 113, 129, 191, 200, 279`), item_award
+  (`game/questlua_pc.cpp:2726`), lonca/messenger.
+- **Ekonomi:** item satırları, altın, `cash`/`mileage` miktarları (`db/ClientManager.cpp:958, 3587`).
+
+**2a kararı (Öneri):** bu 8 yolda ham SQL **varsayılan olarak yazılmaz.** Yerine: sorgu ailesi/sınıfı, korelasyon numarası
+(`iID`), hata kodu, evre, sonuç, deneme sayısı, bağlantı rolü, süre. Olay sayısı ve sınıfı korunur (sayaç + ledger), yani
+hata kanıtı budanmaz. **Aile etiketi** SQL'den türetilir: fiil + `FROM`/`INTO`/`UPDATE`'ten sonraki tablo adı; tırnaklı
+dizgiler ve `\`-kaçışları atlanarak taranır, **hiçbir değer alınmaz** (ör. auth sorgusu → `SELECT account`); türetici,
+şifre/isim içinde `FROM`/`INTO` geçen ve kaçış içeren düşmanca girdilerle birim testinden geçer. Ham SQL gerçekten gerekirse
+**özel hata ayıklama modu** ayrı onaya getirilir; production varsayılanı olmaz.
+
+**Yan bulgu (2a kapsamı dışı): "channel service" dalı — latent güvenlik/ölü kod borcu, bugün kanıtlanmış istismar değil.**
+- Dal, kullanıcının **düz şifresini** (escape edilmiş) SQL metnine koyuyor (`game/input_auth.cpp:260-261, 267-283`); aynı
+  dosyadaki "düz şifre SQL'e girmez" yorumu (`:225-226`) bu dal için doğru değil.
+- **Erişilebilirlik (Kanıtlı kod, 2026-10-07):** tek giriş yolu `CG::LOGIN3` → `HandleLogin3` → `CInputAuth::Login`
+  (`:163-175`); sıra `trim_and_lower` → `FN_IS_VALID_LOGIN_STRING` (`:207`, geçmezse `NOID`) → escape → `Login_IsInChannelService`
+  (`:267`, tek çağrı noktası; `[` ile başlıyor mu, `:145-150`). Doğrulayıcı (`:67-142`) yalnız harf/rakam ve locale
+  istisnalarını kabul ediyor: Canada `` _-.!@#$%^&*()``, Korea/YMIR `-_`, Brazil `_-=`, Japan `-_@#` — **hiçbirinde `[` yok**;
+  escape `[` eklemez. Doğrulayıcıyı atlayan başka bir çağrı yolu bulunmadı (arama: `Login_IsInChannelService`,
+  `FN_IS_VALID_LOGIN_STRING`, `CInputAuth::Login`).
+- **Sınıf:** mevcut LOGIN3 doğrulama sırası nedeniyle normal istemci için erişilemez görünüyor → uzaktan istismar kanıtlanmadı;
+  **latent güvenlik / ölü kod borcu**. Doğrulayıcı ya da yönlendirme değişirse risk geri gelir. Ayrı temizlik/güvenlik analizi
+  (2a dışı; roadmap'e 2a PR'ındaki doküman güncellemesiyle girer).
+
+**2a dışında kalan diğer ham SQL logları** (değer içerebilir, AsyncSQL hata yolu değil; ayrı küçük iş): `db/ClientManager.cpp:751`
+(`SAFEBOX Query`), `:971` (`EmpireSelect`), `:2963, 3360, 3409` (`DirectQuery failed`), `db/GuildManager.cpp:1371, 1483`
+(`WAR_REWARD`, hesap adları), `db/Cache.cpp:64`, `game/log.cpp:39` (yalnız `test_server`).
+
 ## 8. H-1: üç bağlantı ve silinen item (Kanıtlı, `sqlprobe` H1a–c, 3/3)
 | Prob | Kurgu (gerçek `item` DDL'i, gerçek ifade biçimleri) | Sonuç |
 |---|---|---|
@@ -229,7 +321,11 @@ karakter seti her durumda `latin1`. Ayrıca bağlantı/yeniden bağlanma sonras�
 Ayrı PR; 2a test VM kabulünü geçmeden 2b'ye geçilmez. Şartlar (kullanıcı onayı, 2026-10-07):
 1. **Bağlantı başına FIFO korunur; `ReturnQuery` bariyeri korunur** (bölüm 8 değişmezleri).
 2. **Eski kalıcı-hata tekrar listesi kaldırılır** (1133, 1138, izin/şifre/host, tablo bozukluğu artık tekrar edilmez).
-3. **Tekrar yalnız kanıtlı güvenli sınıflarda:** `rc=-1` (teslim edilmedi) her aile; 1205/1213 yalnız `rollback_proven`
+3. **Sonuç ≠ politika (bölüm 1b):** iki eksen ayrı tutulur; otomatik tekrar yalnız `TRANSIENT_CONNECTION` (ve işaretli
+   aileler için bölüm 1b'deki sınıflar); `CONNECTION_CONFIG_FATAL`, `INTERNAL_PROTOCOL_STATE`, `QUERY_PERMANENT`, bilinmeyen kod →
+   tekrar yok; `RESOURCE_LIMIT` (1040/1203/1226) şimdilik tekrar yok ama kalıcı sayılmaz. 100 ms aralık yalnız transient yolda, `Quit` ile kesilir, game ana thread'ini bloklamaz (`DirectQuery` tekrar etmez),
+   `syserr`'e deneme başına değil durum değişimi başına satır.
+3a. **Tekrar yalnız kanıtlı güvenli sınıflarda:** `rc=-1` + TRANSIENT_CONNECTION her aile; 1205/1213 yalnız `rollback_proven`
    işaretli ailelerde; belirsiz sonuç yalnız `idempotent` işaretli ailelerde. **Belirsiz sonuç varsayılan olarak kör tekrar
    edilmez.** 2a'da hiçbir aile işaretlenmez (API var, varsayılan kapalı); işaretleme aile testleriyle sonraki işlerde.
 4. **S11:** async yolda sonuçlar boşaltılır.
@@ -240,6 +336,8 @@ Ayrı PR; 2a test VM kabulünü geçmeden 2b'ye geçilmez. Şartlar (kullanıcı
 8. **Telemetri:** kuyruk **bayt**, derinlik ve yaş; sınıf/evre sayaçları; ledger sayacı; `docs/monitoring.md` + `m2metrics.py`.
 9. **Bağlantı ve yeniden bağlanma sonrası oturum durumu doğrulanır:** `autocommit=1` ve karakter seti; beklenmezse uyarı + sayaç.
 10. **Failure ledger:** sadece metadata (bölüm 7), dosya izni 0600.
+10a. **Ham SQL loglanmaz (bölüm 7b):** 8 yol metadata'ya çevrilir; aile etiketi değer almadan türetilir (düşmanca girdi testleri);
+    özel hata ayıklama modu yok (gerekirse ayrı onay).
 11. **Keyfi production eşiği/zaman aşımı eklenmez:** sınırsız kuyruk production politikası ilan edilmez; yüksek su eşiği yok;
     oyun thread'ine bloklayan geri basınç yok; sorgu atma yok; bakım/degraded davranışı yok (bölüm 5).
 12. Kilitli `empty()` (K8); kopya kuyruğunu da sayan bekleyen sayısı (K4); `AddCopiedQueryCount` (K10).
@@ -252,6 +350,8 @@ Ayrı PR; 2a test VM kabulünü geçmeden 2b'ye geçilmez. Şartlar (kullanıcı
 - **2b:** db kaydetme onayı / başarısız kaydetmede önbellek durumu (2a test VM kanıtından sonra).
 - Ailelerin `rollback_proven` / `idempotent` olarak işaretlenmesi (2b ve sonrası, aile testleriyle).
 - H-1 (ayrı açık risk/test maddesi; runtime değişikliği yok).
+- "Channel service" dalının temizliği (latent güvenlik borcu, bölüm 7b) ve 2a dışındaki diğer ham SQL logları (log hijyeni,
+  bölüm 7b) — **ayrı security/log-hygiene backlog**; 2a PR'ının roadmap güncellemesinde kayda geçer.
 - Kuyruk geri basıncı / degraded / bakım modu (game entegrasyonu + yük testi ölçümü).
 - Kapanış süre değeri; ledger payload'ı.
 - H-1 değişikliği (bölüm 8: önerilmiyor).
@@ -271,6 +371,8 @@ Ayrı PR; 2a test VM kabulünü geçmeden 2b'ye geçilmez. Şartlar (kullanıcı
 | K7 | K7a/b/c/d önce/sonra | döngü yok; binlerce `syserr` satırı yok; `DirectQuery` kesinti boyunca bloklanmaz; karakter seti her durumda `latin1`; `autocommit=1` |
 | Kapanış | S9 varyantları; DB kapalıyken `Quit` | sessiz atma yok; kalanlar sayaç + kayıt; süre sınırsız değil |
 | Çok ifade | kaynak envanteri + digest envanteri; bayrak kapalıyken `item_award` biçimi (`…;`) ve S1–S12 | gerçek bağımlılık yoksa kapatılır |
+| İki eksen | C1–C4, P3, G1, S11 | config/fatal ve internal hatalarda tek deneme, döngü yok, durum değişimi başına bir `syserr` satırı; transient'te 100 ms yerinde tekrar, `Quit` ile kesilir |
+| Ham SQL | 8 yolu tetikleyen testler (hata, > 0,5 sn, kapanış flush'ı, escape, SLOW) + düşmanca aile türetici birim testi | loglarda ham SQL/değer yok; aile, korelasyon, kod, evre, sonuç, deneme var |
 | Ledger | içerik denetimi | SQL metni, hash, parametre, hesap/oyuncu/item id, IP, isim **yok**; bölüm 7 alanları var; 0600 |
 | Telemetri | `m2metrics.py` | yeni alanlar okunur, eski satırlar bozulmaz |
 | Performans | `enqueue-bench`, boşta + sentetik yükte CPU A/B | üretici maliyeti ölçülür, fark kanıtlanır (eşik önceden konmaz) |
@@ -284,7 +386,12 @@ Ayrı PR; 2a test VM kabulünü geçmeden 2b'ye geçilmez. Şartlar (kullanıcı
   değer içermeyen `performance_schema` digest özeti ile test VM'de gerçek aile listesi çıkarılmalı.
 - **Evre kanıtı** Connector'ın bu sürümündeki gönderim yoluna ve yazma döngüsüne dayanıyor; sunucu tarafı üç kesilme noktası
   (P1/P1b/P1c) ile test edildi. TLS/sıkıştırma ve başka Connector sürümleri test edilmedi; değişirse prob paketi tekrar koşulur.
-- **`rc=-1` ≠ geçici:** kalıcı bağlantı hataları (ör. 1045) da teslim edilmedi sınıfında; yerinde tekrar kesinti politikasına bağlı.
+- **`rc=-1` ≠ geçici (çözüldü, bölüm 1b):** 1045/1049 (yapılandırma) ve 1040/1226 (`RESOURCE_LIMIT`, geçici olabilir) teslim
+  edilmedi ama 2a'da tekrar edilmez. Bedeli: bu durumlar sürerken yazmalar başarısız olur (bugün de öyle; artık görünür ve
+  sınıfı doğru). Tutma, kaynak/degraded politikası ayrı karar.
+- **Transient listesi dar:** yalnız 2002/2006/2013(`rc=-1`). MariaDB yeniden başlarken başka bir el sıkışma kodu dönerse tekrar
+  edilmez ve yazma kaybolur (görünür); MariaDB yeniden başlatma testinde ölçülecek.
+- **Aile etiketi türetici** ham SQL'i tarar; bir hata değer sızdırabilir → düşmanca girdi birim testi ve "şüphede `unknown`" kuralı.
 - **InnoDB 50 sn / Aria 86400 sn bekleme:** "teslim edilmedi" dışındaki her tekrar worker'ı uzun bekletebilir; kuyruk büyümesi
   bölüm 5'teki politikaya bağlı.
 - **Yerinde tekrar = FIFO bekler:** girişler (yükleme) aynı main bağlantıda → DB sorununda girişler de gecikir.
@@ -303,3 +410,5 @@ Ayrı PR; 2a test VM kabulünü geçmeden 2b'ye geçilmez. Şartlar (kullanıcı
 - `CLIENT_MULTI_STATEMENTS` 2a içinde test edilir; bağımlılık yoksa kapatılır.
 - Kuyruk ve kapanış: 2a yalnız ölçüm ve görünürlük; eşik/süre/degraded davranışı yük testi ölçümünden sonra ayrı karar.
 - H-1: ayrı açık risk/test maddesi; runtime değişikliği yok.
+- 1040/1226 `RESOURCE_LIMIT` (kalıcı değil; 2a'da tekrar yok). "Channel service" dalı: latent borç, istismar kanıtı yok.
+- Revizyon 4 kanıtı ayrı commit; 2a dalı bu commit'ten sonraki `main`'den açılır.

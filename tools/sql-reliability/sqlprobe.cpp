@@ -4,7 +4,7 @@
 // quest InnoDB, player and guild_member Aria) and the real statement shapes of db/Cache.cpp, db/ClientManager*.cpp.
 // Runs only against the temporary MariaDB started by probe.sh; same fail-closed guard as sqlrt.
 //
-//   sqlprobe <R1|R2|R3|R4|R5|G1|G2|K7a|K7b|K7c|K7d|P0|P1|P1b|P1c|P2|P3|P4|P5|H1a|H1b|H1c>
+//   sqlprobe <R1|R2|R3|R4|R5|G1|G2|K7a|K7b|K7c|K7d|P0|P1|P1b|P1c|P2|P3|P4|P5|C1|C2|C3|C4|H1a|H1b|H1c>
 //   env (probe.sh): RT_PORT, RT_PW, RT_SOCK, RT_TOKEN, RT_START (shell command that starts the temporary server)
 #include "libsql/AsyncSQL.h"
 
@@ -17,6 +17,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -575,6 +576,113 @@ namespace
 		mysql_close(h);
 	}
 
+	// --- C: connection/config failures at reconnect: which phase and errno, and what does today's worker do? ----
+	// The connection is killed, the condition is set, the next statement has to reconnect.
+	//   C1 access denied (password changed)   C2 unknown database (dropped)
+	//   C3 too many connections (server-wide)  C4 per-user connection limit
+	// C3/C4 use rtl, a user without global privileges (rt has GRANT ALL, and privileged users get an extra slot).
+	void conn_case(int which)
+	{
+		const bool limited = which >= 3;
+		const std::string user = limited ? "rtl" : "rt";
+		const char* dbName = which == 2 ? "rtc" : "rt";
+		if (limited)
+		{
+			must(g_admin, std::string("CREATE USER IF NOT EXISTS rtl@'127.0.0.1' IDENTIFIED BY '") + getenv("RT_PW") + "'");
+			must(g_admin, "GRANT ALL ON rt.* TO rtl@'127.0.0.1'");
+		}
+		if (which == 2)
+			must(g_admin, "CREATE DATABASE IF NOT EXISTS rtc");
+
+		MYSQL* holder = nullptr; // C4: keeps the user's only allowed connection busy during the reconnect
+		std::vector<MYSQL*> fill; // C3: rtl connections filling every non-privileged slot (max_connections minimum is 10)
+		auto setCond = [&](bool on) {
+			if (which == 1)
+				must(g_admin, on ? "ALTER USER rt@'127.0.0.1' IDENTIFIED BY 'changed-by-probe'"
+					: std::string("ALTER USER rt@'127.0.0.1' IDENTIFIED BY '") + getenv("RT_PW") + "'");
+			else if (which == 2)
+				must(g_admin, on ? "DROP DATABASE rtc" : "CREATE DATABASE IF NOT EXISTS rtc");
+			else if (which == 3)
+			{
+				if (on)
+				{
+					must(g_admin, "SET GLOBAL max_connections = 10");
+					for (int i = 0; i < 30; ++i)
+					{
+						MYSQL* f = mysql_init(nullptr);
+						if (!mysql_real_connect(f, "127.0.0.1", "rtl", getenv("RT_PW"), "rt", atoi(getenv("RT_PORT")), nullptr, 0))
+						{
+							mysql_close(f);
+							break; // server-wide limit reached
+						}
+						fill.push_back(f);
+					}
+				}
+				else
+				{
+					for (MYSQL* f : fill)
+						mysql_close(f);
+					fill.clear();
+					must(g_admin, "SET GLOBAL max_connections = 151");
+				}
+			}
+			else if (on)
+			{
+				must(g_admin, "ALTER USER rtl@'127.0.0.1' WITH MAX_USER_CONNECTIONS 1");
+				holder = mysql_init(nullptr);
+				if (!mysql_real_connect(holder, "127.0.0.1", "rtl", getenv("RT_PW"), "rt", atoi(getenv("RT_PORT")), nullptr, 0))
+					die("holder connect", holder);
+			}
+			else
+			{
+				if (holder) { mysql_close(holder); holder = nullptr; }
+				must(g_admin, "ALTER USER rtl@'127.0.0.1' WITH MAX_USER_CONNECTIONS 0");
+			}
+		};
+		auto killUser = [&] {
+			must(g_admin, "KILL CONNECTION " + std::to_string(scalar(g_admin,
+				"SELECT MIN(id) FROM information_schema.processlist WHERE user = '" + user + "'")));
+			ms(300);
+		};
+
+		// raw client: phase and errno
+		MYSQL* h = mysql_init(nullptr);
+		mysql_options(h, MYSQL_SET_CHARSET_NAME, "latin1");
+		if (!mysql_real_connect(h, "127.0.0.1", user.c_str(), getenv("RT_PW"), dbName, atoi(getenv("RT_PORT")), nullptr, CLIENT_MULTI_STATEMENTS))
+			die("connect", h);
+		my_bool reconnect = true;
+		mysql_options(h, MYSQL_OPT_RECONNECT, &reconnect);
+		killUser();
+		setCond(true);
+		const int rc = mysql_real_query(h, "DO 1", 4);
+		const unsigned e = mysql_errno(h);
+		setCond(false);
+		mysql_close(h);
+
+		// today's AsyncSQL worker: does it loop on this failure?
+		Probe sql;
+		if (!sql.Setup("127.0.0.1", user.c_str(), getenv("RT_PW"), dbName, "latin1", false, atoi(getenv("RT_PORT"))))
+			die("asyncsql setup", nullptr);
+		for (int i = 0; i < 100 && !sql.IsConnected(); ++i)
+			ms(50);
+		sql.AsyncQuery("DO 1");
+		ms(500);
+		killUser();
+		setCond(true);
+		sql.AsyncQuery("DO 2");
+		ms(3000);
+		const long long fails = syserr("query failed"), retries = syserr("AsyncSQL: retrying");
+		setCond(false);
+		sql.Quit();
+		static const char* names[] = { "", "access_denied", "unknown_database", "too_many_connections", "user_connection_limit" };
+		printf("%s case=%s raw rc=%d errno=%u | asyncsql_today: failures_logged_in_3s=%lld retrying_lines=%lld\n", g_scn,
+			names[which], rc, e, fails, retries);
+	}
+	void C1() { conn_case(1); }
+	void C2() { conn_case(2); }
+	void C3() { conn_case(3); }
+	void C4() { conn_case(4); }
+
 	void H1a() { h1(false, false); }
 	void H1b() { h1(true, false); }
 	void H1c() { h1(true, true); }
@@ -584,7 +692,7 @@ int main(int argc, char** argv)
 {
 	if (argc < 2)
 	{
-		fprintf(stderr, "usage: %s <R1|R2|R3|R4|R5|G1|G2|K7a|K7b|K7c|K7d|P0|P1|P1b|P1c|P2|P3|P4|P5|H1a|H1b|H1c>\n", argv[0]);
+		fprintf(stderr, "usage: %s <R1|R2|R3|R4|R5|G1|G2|K7a|K7b|K7c|K7d|P0|P1|P1b|P1c|P2|P3|P4|P5|C1|C2|C3|C4|H1a|H1b|H1c>\n", argv[0]);
 		return 2;
 	}
 	g_scn = argv[1];
@@ -606,6 +714,7 @@ int main(int argc, char** argv)
 	else if (s == "K7a") K7a(); else if (s == "K7b") K7b(); else if (s == "K7c") K7c(); else if (s == "K7d") K7d();
 	else if (s == "P0") P0(); else if (s == "P1") P1(); else if (s == "P2") P2();
 	else if (s == "P1b") P1b(); else if (s == "P1c") P1c(); else if (s == "P3") P3(); else if (s == "P4") P4(); else if (s == "P5") P5();
+	else if (s == "C1") C1(); else if (s == "C2") C2(); else if (s == "C3") C3(); else if (s == "C4") C4();
 	else if (s == "H1a") H1a(); else if (s == "H1b") H1b(); else if (s == "H1c") H1c();
 	else die("unknown scenario", nullptr);
 

@@ -17,7 +17,7 @@ RT_PORT=${RT_PORT:-3398}
 W=/var/tmp/m2sqlprobe
 SOCK=$W/run/mysqld.sock
 HERE=$(cd "$(dirname "$0")" && pwd)
-SCENARIOS=${*:-"R1 R2 R3 R4 R5 P0 P1 P1b P1c P2 P3 P4 P5 G1 G2 K7c K7a K7b K7d H1a H1b H1c"}
+SCENARIOS=${*:-"R1 R2 R3 R4 R5 P0 P1 P1b P1c P2 P3 P4 P5 G1 G2 K7c K7a K7b K7d C1 C2 C3 C4 H1a H1b H1c"}
 
 cleanup() {
 	[ -S "$SOCK" ] && mariadb-admin --socket="$SOCK" shutdown > /dev/null 2>&1 || true
