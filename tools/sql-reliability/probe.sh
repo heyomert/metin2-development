@@ -17,11 +17,14 @@ RT_PORT=${RT_PORT:-3398}
 W=/var/tmp/m2sqlprobe
 SOCK=$W/run/mysqld.sock
 HERE=$(cd "$(dirname "$0")" && pwd)
-SCENARIOS=${*:-"R1 R2 R3 R4 R5 P0 P1 P1b P1c P2 P3 P4 P5 G1 G2 K7c K7a K7b K7d C1 C2 C3 C4 H1a H1b H1c"}
+SCENARIOS=${*:-"R1 R2 R3 R4 R5 P0 P1 P1b P1c P2 P3 P4 P5 G1 G2 K7c K7a K7b K7d C1 C2 C3 C4 H1a H1b H1c D1 D2 D3 D4 D5 D6 D7 D8"}
+[ -f "$SRC/src/libsql/SQLFamily.h" ] && [ $# -eq 0 ] && SCENARIOS="$SCENARIOS F1 L1 L2 Q1 O1 M1 G3"
 
 cleanup() {
 	[ -S "$SOCK" ] && mariadb-admin --socket="$SOCK" shutdown > /dev/null 2>&1 || true
 	sleep 2
+	# KEEP=<dir>: keep the run directories (their log/ files) for inspection; never inside $W
+	[ -n "${KEEP:-}" ] && [ -d "$W/runs" ] && mkdir -p "$KEEP" && cp -R "$W/runs/." "$KEEP/"
 	rm -rf "$W"
 }
 trap cleanup EXIT
@@ -37,7 +40,10 @@ mkdir -p "$W/data" "$W/run" "$W/runs"
 chmod 0711 "$W"
 chown mysql:mysql "$W/data" "$W/run"
 
-c++ -std=c++20 -O1 -DOS_FREEBSD -I"$SRC/src" -I"$SRC/include" \
+# The 2a library (SQLFamily.h present) gets the 2a-only scenarios (F1, L1, Q1, O1)
+HAVE_2A=""
+[ -f "$SRC/src/libsql/SQLFamily.h" ] && HAVE_2A="-DHAVE_2A -DSPDLOG_COMPILED_LIB -I$SRC/vendor/spdlog-1.15.3/include"
+c++ -std=c++20 -O1 -DOS_FREEBSD $HAVE_2A -I"$SRC/src" -I"$SRC/include" \
 	-I"$BUILD/vendor/mariadb-connector-c-3.4.5/include" -I"$SRC/vendor/mariadb-connector-c-3.4.5/include" \
 	-o "$W/sqlprobe" "$HERE/sqlprobe.cpp" \
 	"$BUILD/lib/liblibsql.a" "$BUILD/lib/liblibthecore.a" "$BUILD/lib/libmariadbclient.a" "$BUILD/lib/libspdlog.a" \

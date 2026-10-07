@@ -3,6 +3,7 @@
 #include "common/length.h"
 
 #include "db.h"
+#include "libsql/SQLFamily.h"
 
 #include "config.h"
 #include "desc_client.h"
@@ -68,7 +69,10 @@ std::unique_ptr<SQLMsg> DBManager::DirectQuery(const char* c_pszFormat, ...)
 	DWORD dt = get_dword_time() - t;
 
 	if (dt > 200) {
-		sys_err("[SLOW-GAME] DirectQuery took %u ms: %s", dt, szQuery);
+		// Statement family and id only: the SQL text may carry passwords, names or IPs (step 2a, section 7b)
+		char family[64];
+		SQLFamily(szQuery, family, sizeof(family));
+		sys_err("[SLOW-GAME] DirectQuery took %u ms: family=%s id=%d", dt, family, msg ? msg->iID : 0);
 	}
 
 	return msg;

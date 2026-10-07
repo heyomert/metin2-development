@@ -1,6 +1,6 @@
 # DB adım 2: AsyncSQL güvenilirlik düzeltmesi — kök neden ve etki analizi (revizyon 4)
 
-**Durum: ANALİZ, onay bekliyor (2026-10-07).** Runtime kodu, şema ve canlı veri değişmedi. Bu revizyon kullanıcı
+**Durum: 2a kodlandı ve test VM'de geçici MariaDB ile test edildi (2026-10-07, dal `feat/asyncsql-2a`), kabul ve VM kurulumu bekliyor; sonuçlar `docs/worklog/2026-10-07-asyncsql-2a.md`. 2b ayrı onaya bağlı.** Şema ve canlı veri değişmedi. Bu revizyon kullanıcı
 incelemesine göre yeniden yazıldı: hata kodları Connector kaynağından tek tek çıkarıldı, 1205/1213 gerçek sorgu aileleri ve
 gerçek motorlarla test edildi, kısmi paket / H-1 / K7 için reproducer'lar eklendi. Revizyon 1'in iddiaları **yanlıştı ve
 geri çekildi** (bölüm 0). **Revizyon 3:** sınıflandırma hata koduna değil **başarısızlık evresine** dayanıyor (bölüm 1); 2a
@@ -31,14 +31,25 @@ değişiyor, davranış aynı).
 5. "Sınırsız kuyruk + uyarı", "≤ 20 sn kapanış", "ham SQL dead-letter" ve "sahipsiz item DELETE'ini main'e al" önerileri geri
    çekildi (bölüm 5, 6, 7, 8).
 6. **(Revizyon 2'den)** "2002/2006 = gönderilmedi" sınıfı **hata koduna göre** kurulmuştu. Geri çekildi: hata kodu tek başına
-   evreyi söylemiyor; sınıflandırma `mysql_real_query`'nin dönüş değerine (gönderim/okuma evresi) dayanıyor (bölüm 1).
+   evreyi söylemiyor; sınıflandırma başarısızlık evresine dayanıyor (bölüm 1).
+7. **(Revizyon 4'ten, 2a kodlaması sırasında bulundu)** "`mysql_real_query` gönderimde `-1`, okumada `1` döndürür; evre dönüş
+   değerinden ayırt edilir" **yanlıştı.** Okuma fonksiyonu `mthd_my_read_query_result` de birkaç yolda `-1` döndürür
+   (`libmariadb/mariadb_lib.c:2918` LOCAL INFILE, `:2940, 2943` sonuç kümesi metadata'sı, `:2951, 2956` EOF paketi);
+   `mysql_real_query` bunu olduğu gibi geçirir (`:3007-3008`). Yani `rc=-1` okuma evresinde de görülebilir. **Düzeltme (2a):**
+   AsyncSQL evreyi dönüş değerinden çıkarmaz; iki ayrı çağrı yapar: `mysql_send_query` (`:2582-2585`, yalnız
+   `ma_simple_command`, `skip_check=1`) başarısızsa **gönderim**, `mysql_read_query_result` (`:2987-2990`) başarısızsa **okuma**
+   (`libsql/AsyncSQL.cpp`, `CAsyncSQL::Attempt`). Bölüm 1'in gönderim/okuma sonuçları (P1–P5, C1–C4) bu iki çağrıyla aynı kod
+   yollarını kapsar; aşağıdaki tablolarda `rc=-1` = "gönderim evresi başarısız", `rc=1` = "okuma evresi başarısız" diye okunmalı.
 
 ## 1. Başarısızlık evresi ve hata kodları (Connector 3.4.5 kaynağı + sunucu testleri)
-**Evre, dönüş değerinden ayırt edilebiliyor (Kanıtlı kod):** `mysql_real_query` (`libmariadb/mariadb_lib.c:2996-3010`)
-gönderim evresi başarısızsa **`-1`** (`ma_simple_command` → `mthd_my_send_cmd`, `:3005-3006`), cevap okuma evresi başarısızsa
-**`1`** döndürür (`db_read_query_result` → `mthd_my_read_query_result` → `ma_net_safe_read`, `:3007-3008, 2889-2903, 207-231`).
-Yollar `server-src/vendor/mariadb-connector-c-3.4.5/` altında. **Bugünkü AsyncSQL bu ayrımı atıyor** (`if (mysql_real_query(…))`,
-`libsql/AsyncSQL.cpp:295, 574, 672`).
+**Evre, çağrıdan ayırt ediliyor (Kanıtlı kod; bölüm 0 madde 7 ile düzeltildi):** `mysql_real_query`
+(`libmariadb/mariadb_lib.c:2996-3010`) iki evreyi sırayla çalıştırır: gönderim (`ma_simple_command` → `mthd_my_send_cmd`,
+`:3005-3006`, hata → `-1`) ve cevap okuma (`db_read_query_result` → `mthd_my_read_query_result` → `ma_net_safe_read`,
+`:3007-3008, 2889-2903, 207-231`). Okuma evresi de bazı yollarda `-1` döndürdüğü için (`:2918, 2940, 2943, 2951, 2956`) **dönüş
+değeri evreyi kesin söylemez.** Kesin ayrım iki ayrı çağrıyla yapılır: `mysql_send_query` (`:2582-2585`, yalnız gönderim) ve
+`mysql_read_query_result` (`:2987-2990`, yalnız okuma). Bu bölümde `rc=-1` / `rc=1` = gönderim / okuma evresi başarısız.
+Yollar `server-src/vendor/mariadb-connector-c-3.4.5/` altında. **2a öncesi AsyncSQL evreyi hiç kullanmıyordu**
+(`if (mysql_real_query(…))`, revizyon 4 anındaki `libsql/AsyncSQL.cpp:295, 574, 672`); 2a iki ayrı çağrıya geçti.
 
 **Gönderim evresi (`rc = -1`) — "istek tamamı teslim edilmeden döndü" (Kanıtlı):**
 - `mthd_my_send_cmd` (`mariadb_lib.c:401-489`) yalnız şu yollarda hata döner: (a) gönderimden önce soket ölü + yeniden bağlanma
@@ -168,7 +179,8 @@ denmez: belirsiz ağ hatasında uygulama düzeyinde tekil işlem anahtarı (ör.
   edilmeyeceği ikinci eksende (bölüm 1b: yalnız TRANSIENT_CONNECTION). `rc=1` + bağlantı
   hatası → belirsiz (P2 uygulandı; P4/P5 uygulanmadı) → sadece idempotent convergence ailelerinde tekrar.
 - **Evre bilinmiyorsa (yalnız hata kodu):** 2002, 2006, 2013 ve bütün bağlantı hataları **belirsiz**; kör tekrar yok.
-- **2a'nın şartı:** AsyncSQL `mysql_real_query`'nin dönüş değerini saklar ve sınıflandırmaya katar; evresi bilinmeyen hiçbir
+- **2a'nın şartı:** AsyncSQL başarısızlık evresini (`mysql_send_query` / `mysql_read_query_result`, bölüm 0 madde 7) saklar ve
+  sınıflandırmaya katar; evresi bilinmeyen hiçbir
   başarısızlık güvenli sayılmaz.
 
 ## 5. Kuyruk: uzun DB kesintisi ve geri basınç (Öneri: seçenekler, sayı yok)

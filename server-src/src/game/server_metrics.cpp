@@ -110,6 +110,13 @@ void CServerMetrics::StartSql(Clock::time_point now)
 
 	m_sql->Start(now);
 	sys_log(0, "METRICS: SQL lines every %d s to log/sql_YYYY-MM-DD.log", (int) METRICS_WINDOW.count());
+
+	// Failure ledger (metadata only, 0600): lives until process exit, so the drain of the SQL connections after
+	// destroy() (they are locals of main) is still recorded
+	char host[64];
+	CopySafeValue(host, sizeof(host), g_stHostname);
+	if (!sql_failure_ledger::Instance().Start(host, CurrentProcessId(), METRICS_KEEP_DAYS, METRICS_QUEUE_SIZE))
+		sys_err("METRICS: SQL failure ledger initialization failed");
 }
 
 void CServerMetrics::Shutdown()
@@ -300,6 +307,6 @@ void CServerMetrics::EmitSql(Clock::time_point now, bool bFinal)
 	CopySafeValue(host, sizeof(host), g_stHostname);
 
 	// The game's SQL connections are closed after the log is shut down (game/main.cpp), so what they leave
-	// unexecuted cannot be counted: game lines never carry unexecuted_at_quit
+	// unexecuted cannot be counted here: game lines never carry unexecuted_at_quit (the failure ledger records it)
 	m_sql->Window(now, host, CurrentProcessId(), m_sqlWriter, "", bFinal, false);
 }

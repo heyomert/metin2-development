@@ -11,6 +11,12 @@
 #include <mutex>
 #include <string>
 
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 // Appends each day's lines straight to <dir>/<base>_YYYY-MM-DD.log. There is no active file that gets renamed at
 // midnight, so a restart on a later day cannot mix days, and no rename/copy/remove can fail half way.
 // Runs only on the metrics worker thread. Nothing may escape sink_it_/flush_: spdlog's worker rethrows anything
@@ -18,8 +24,10 @@
 class metrics_daily_sink final : public spdlog::sinks::base_sink<std::mutex>
 {
 public:
-	metrics_daily_sink(std::string dir, std::string base, int keepDays)
-		: m_dir(std::move(dir)), m_base(std::move(base)), m_keepDays(keepDays)
+	// fileMode: -1 keeps the process umask (telemetry); e.g. 0600 for a stream that must not be world-readable
+	// (the SQL failure ledger). It is set when the file is created and re-applied to an existing file.
+	metrics_daily_sink(std::string dir, std::string base, int keepDays, int fileMode = -1)
+		: m_dir(std::move(dir)), m_base(std::move(base)), m_keepDays(keepDays), m_fileMode(fileMode)
 	{
 	}
 
@@ -91,6 +99,17 @@ private:
 	{
 		std::error_code ec;
 		std::filesystem::create_directories(m_dir, ec);
+#ifndef _WIN32
+		if (m_fileMode >= 0)
+		{
+			const int fd = ::open(file_name_(m_day).c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, (mode_t) m_fileMode);
+			if (fd < 0)
+				return;
+			if (::fchmod(fd, (mode_t) m_fileMode) != 0 || !(m_fp = ::fdopen(fd, "a")))
+				::close(fd);
+			return;
+		}
+#endif
 		m_fp = std::fopen(file_name_(m_day).c_str(), "a");
 	}
 
@@ -134,6 +153,7 @@ private:
 	const std::string m_dir;
 	const std::string m_base;
 	const int m_keepDays;
+	const int m_fileMode;
 
 	std::string m_day;
 	std::FILE* m_fp = nullptr;

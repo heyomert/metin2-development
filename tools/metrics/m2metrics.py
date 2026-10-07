@@ -9,6 +9,7 @@ Read-only. Python 3 standard library only.
     python3 m2metrics.py --raw --hours 1       # print the matching lines instead of a summary
     python3 m2metrics.py --dbstat /var/log/m2dev-metrics --hours 24   # MariaDB/OS/process lines of m2dev-dbstat
     python3 m2metrics.py --sql --hours 24      # SQL queue/error lines (log/sql_*.log) of game cores and db
+    python3 m2metrics.py --failures --hours 24 # SQL failure ledger (log/sql_failures_*.log), grouped
 
 Fields are read by name (key=value), never by position, so new fields do not break this tool.
 """
@@ -72,6 +73,12 @@ def find_files(base, days, prefix="metrics"):
 
 SQL_ERRNOS = ("e2006", "e2013", "e2014", "e1205", "e1213", "e_other")
 SQL_SAVES = ("save_player", "save_item", "destroy_item", "save_quest", "save_safebox", "award_taken")
+# DB step 2a (docs/monitoring.md): failed messages by result and by policy, failed attempts by phase. Lines from older
+# binaries do not have these fields; they are reported as such, never as zero.
+SQL_RESULTS = ("res_not_delivered", "res_rolled_back", "res_ambiguous", "res_permanent", "res_unexecuted_at_quit")
+SQL_POLICIES = ("pol_transient", "pol_config_fatal", "pol_resource_limit", "pol_internal", "pol_query_permanent",
+                "pol_ambiguous")
+LEDGER_GROUP = ("host", "role", "family", "phase", "errno", "result", "policy")
 
 
 def summarise_sql(lines, conn_limit):
@@ -104,6 +111,19 @@ def summarise_sql(lines, conn_limit):
               f"{sum(1 for r in sums if (num(r.get('stuck_conns')) or 0) > 0)} window(s) with a stuck connection, "
               f"workers_down max {worst('workers_down')}; metrics_dropped {sums[-1].get('metrics_dropped')}, "
               f"metrics_write_errors {sums[-1].get('metrics_write_errors')} (since process start)")
+        new = [r for r in sums if "res_not_delivered" in r]
+        if new:
+            t2 = lambda f: sum(num(r.get(f)) or 0 for r in new)
+            older = f" ({len(sums) - len(new)} window(s) from an older binary have no such fields)" if len(new) < len(sums) else ""
+            print(f"   failed by result: " + ", ".join(f"{k[4:]} {t2(k)}" for k in SQL_RESULTS) + older)
+            print(f"   failed by policy: " + ", ".join(f"{k[4:]} {t2(k)}" for k in SQL_POLICIES)
+                  + f"; failed attempts by phase: send {t2('fail_send')}, read {t2('fail_read')}")
+            print(f"   session_check_fail {t2('session_check_fail')}, syserr lines suppressed {t2('log_suppressed')}, "
+                  f"q_bytes max {max(num(r.get('q_bytes')) or 0 for r in new)}; ledger events {t2('ledger_events')}, "
+                  f"ledger_dropped {new[-1].get('ledger_dropped')}, ledger_write_errors {new[-1].get('ledger_write_errors')} "
+                  f"(since process start)")
+        else:
+            print("   failed by result/policy: n/a (no step 2a fields; older binary)")
         if any(f"{k}_ok" in sums[-1] for k in SQL_SAVES):
             print("   SAVE results (reached AnalyzeQueryResult; err = statement not applied, not proof of data loss): "
                   + ", ".join(f"{k} {total(k + '_ok')}/{total(k + '_err')} ok/err" for k in SQL_SAVES))
@@ -113,12 +133,32 @@ def summarise_sql(lines, conn_limit):
             print(f"     {r['ts']:%Y-%m-%d %H:%M:%S}  {r.get('owner')}/{r.get('target')}/{r.get('role')}  q={r.get('q')} "
                   f"cq={r.get('cq')} oldest_ms={r.get('oldest_ms')} stuck_ms={r.get('stuck_ms')} worker={r.get('worker')} "
                   f"err_total={r.get('err_total')} retry_total={r.get('retry_total')} "
-                  f"reconnect_seen_total={r.get('reconnect_seen_total')}")
+                  f"reconnect_seen_total={r.get('reconnect_seen_total')}"
+                  + (f" q_bytes={r.get('q_bytes')} session_check_fail_total={r.get('session_check_fail_total')}"
+                     if "q_bytes" in r else ""))
         for r in conns:
             if r.get("reason") == "final" and r.get("unexecuted_at_quit") not in (None, "0"):
                 print(f"     final {r['ts']:%Y-%m-%d %H:%M:%S}  {r.get('owner')}/{r.get('target')}/{r.get('role')}  "
                       f"unexecuted_at_quit={r.get('unexecuted_at_quit')} (never executed; not proof of data loss)")
         print()
+
+
+def summarise_failures(lines, limit):
+    """SQL failure ledger (docs/monitoring.md -> SQL failure ledger): one line per statement that finished without being
+    applied. Metadata only; grouped by connection, family, phase, errno, result and policy."""
+    groups = defaultdict(list)
+    for r in lines:
+        groups[tuple(r.get(k, "?") for k in LEDGER_GROUP)].append(r)
+    print(f"== SQL failure ledger: {len(lines)} line(s), {len(groups)} group(s)")
+    print_builds(sorted(lines, key=lambda r: r["ts"]))
+    ordered = sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    for key, rows in ordered[:limit]:
+        rows.sort(key=lambda r: r["ts"])
+        ages = [num(r.get("age_ms")) or 0 for r in rows]
+        print(f"   {len(rows):6d}  " + " ".join(f"{k}={v}" for k, v in zip(LEDGER_GROUP, key))
+              + f"  {rows[0]['ts']:%Y-%m-%d %H:%M:%S} .. {rows[-1]['ts']:%H:%M:%S}  age_ms max {max(ages)}")
+    if len(ordered) > limit:
+        print(f"   ... {len(ordered) - limit} more group(s); use --lags to list more")
 
 
 def build_label(r):
@@ -276,6 +316,8 @@ def main():
     ap.add_argument("--raw", action="store_true", help="print matching lines instead of a summary")
     ap.add_argument("--dbstat", metavar="DIR", help="summarise m2dev-dbstat files in DIR (e.g. /var/log/m2dev-metrics)")
     ap.add_argument("--sql", action="store_true", help="summarise SQL lines (log/sql_*.log) under --dir instead of health lines")
+    ap.add_argument("--failures", action="store_true",
+                    help="summarise the SQL failure ledger (log/sql_failures_*.log) under --dir")
     args = ap.parse_args()
 
     since = datetime.now(timezone.utc) - timedelta(hours=args.hours)
@@ -303,9 +345,11 @@ def main():
                 return 1
             summarise_dbstat(lines)
         return 0
-    if args.sql:
+    if args.sql or args.failures:
+        prefix = "sql_failures" if args.failures else "sql"
         lines = []
-        for path in find_files(args.dir, int(args.hours // 24) + 1, "sql"):
+        # find_files("sql") does not pick up sql_failures_*.log: its day part is not a date
+        for path in find_files(args.dir, int(args.hours // 24) + 1, prefix):
             with open(path, encoding="utf-8", errors="replace") as fp:
                 for line in fp:
                     parts = line.split()
@@ -325,9 +369,13 @@ def main():
                         lines.append(rec)
         if not args.raw:
             if not lines:
-                print(f"no SQL lines in the last {args.hours:g} h under {args.dir}", file=sys.stderr)
+                what = "SQL failure ledger" if args.failures else "SQL"
+                print(f"no {what} lines in the last {args.hours:g} h under {args.dir}", file=sys.stderr)
                 return 1
-            summarise_sql(lines, args.lags)
+            if args.failures:
+                summarise_failures(lines, args.lags)
+            else:
+                summarise_sql(lines, args.lags)
         return 0
 
     files = find_files(args.dir, int(args.hours // 24) + 1)

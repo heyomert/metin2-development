@@ -59,6 +59,16 @@ class CDBManager : public singleton<CDBManager>
 	DWORD			CountAsyncQueryFinished(int i) { return m_asyncSQL[i] ? m_asyncSQL[i]->CountQueryFinished() : 0; }
 	DWORD			CountAsyncCopiedQuery(int i) { return m_asyncSQL[i] ? m_asyncSQL[i]->GetCopiedQueryCount() : 0; }
 
+	// Messages not completed yet on every connection of the slot (main + copy queues)
+	DWORD			CountPending(int i) const
+	{
+		DWORD n = 0;
+		for (const auto* sql : { m_mainSQL[i].get(), m_asyncSQL[i].get(), m_directSQL[i].get() })
+			if (sql)
+				n += sql->CountPending();
+		return n;
+	}
+
 	// Telemetry only (CDBMetrics); null when the slot was not connected
 	enum ESQLRole { SQL_ROLE_MAIN, SQL_ROLE_ASYNC, SQL_ROLE_DIRECT };
 	CAsyncSQL*		GetSQLForStats(int iSlot, ESQLRole eRole)
