@@ -4,7 +4,7 @@
 - **Tür:** düzeltme / karar
 - **Alan:** server-src / db
 - **Durum:** Aktif
-- **PR / commit:** `fix/a17-g11-guild-create` (PR açılınca link)
+- **PR / commit:** [heyomert/metin2-development#28](https://github.com/heyomert/metin2-development/pull/28)
 
 ## Problem / hedef
 Lonca kurma `INSERT INTO guild` başarısız olunca (DB ayakta, SELECT geçmiş) oyuncu "Creation of the guild has failed."
