@@ -2,9 +2,12 @@
 // ReturnQuery (the worker, as db and game use it), with the exact statement and result classification of
 // server-src/src/db/SafeboxActivation.h and the exact login status query and parsing of game/safebox_activation.h.
 // Runs only against the temporary MariaDB started by activation-sql-probe.sh (datadir prefix + per-run token guard).
-#include "libsql/AsyncSQL.h"
+// Same order as db/stdafx.h: the base types, then common/length.h and common/tables.h (through
+// db/SafeboxActivation.h), then libsql/AsyncSQL.h, which #defines QUERY_MAX_LEN that length.h declares as an enum value
+#include "libthecore/stdafx.h"
 #include "db/SafeboxActivation.h"
 #include "game/safebox_activation.h"
+#include "libsql/AsyncSQL.h"
 
 #include <chrono>
 #include <cstdio>
