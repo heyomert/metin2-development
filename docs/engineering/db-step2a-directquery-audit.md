@@ -188,8 +188,10 @@ koşuldu; düzeltmeden sonra `CREATE_SUCCESS` dalına hiç girilmiyor, dolayıs�
 | d25 `ReserveWar` | **güvenli hata**, çökme yok, altın alınmaz | G3 + kod |
 | g11 lonca kurma | yang **alınmaz** (`guild_id=0` → `CreateGuild` 0) **ama** id 0'lı lonca nesnesi map'e girer ve `GUILD_CREATE(0)` gider | D3 + kod → çağıran işi |
 | d1, d5, d20, d26, d34, g12, d29'un INSERT kontrolü | zaten güvenliydi (`== 0` da kontrol ediliyordu), değişmedi | kod |
-| g19 isim değiştirme, d2, d16, d27, d12, d21, g4, g9 | **değişmedi:** sonuç hiç okunmuyor | → A-17 çağıran işi |
-| g6, g18 (SELECT hatası "satır yok" sayılıyor), g3, g16, d9, d23, d24, d28, d33 | **değişmedi:** hata ile boş sonuç ayrılmıyor | → A-17 çağıran işi |
+| g19 isim değiştirme | **güvenli hata** (`fix/a17-change-name`): UPDATE `APPLIED` + 1 satır değilse dönüş 6; item, bekleme süresi, messenger ve log korunur; AMBIGUOUS de 6 (oyuncu lehine) | test VM uçtan uca (önce: item kaybı) + `tools/change-name/test-change-name-logic.cpp` |
+| d2, d16, d27, d12, d21, g4, g9 | **değişmedi:** sonuç hiç okunmuyor | → A-17 çağıran işi |
+| g18 ad kontrolü (SELECT hatası) | **güvenli hata** (`fix/a17-change-name`): okunamayan sayım dönüş 6, "ad boş" sayılmıyor. **Kalan:** aynı anda aynı adı seçen iki oyuncu (`player.name` `UNIQUE` değil) | aynı |
+| g6, g3, g16, d9, d23, d24, d28, d33 | **değişmedi:** hata ile boş sonuç ayrılmıyor | → A-17 çağıran işi |
 | d29 lonca savaşı bahsi | **değişmedi:** yang quest'te önceden düşülüyor, telafi yok | → A-17 çağıran işi (telafi gerekir) |
 
 **"Bir SQL hatası çağırana başarı metadata'sı olarak görünebilir mi?" (red-team):**

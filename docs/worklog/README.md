@@ -33,5 +33,6 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-07 | [PR #22 test VM kabul testi ve regresyon tabanı; "şimdi" sinyali ve önbellek/kalıcılık tuzakları](2026-10-07-pr22-acceptance.md) | karar / ortam | server-src / runtime / tools | Aktif | #22 |
 | 2026-10-07 | [Depo ödeme kapısı sunucuda yok (A-23); mall depo kapısını açıyordu; karakter silme ve aktivasyon probe'ları](2026-10-07-safebox-a23.md) | düzeltme / karar | server-src / server / db | Aktif | — |
 | 2026-10-08 | [Depo hesap aktivasyonu (A-19): idempotent satır, blokajlı ücret, UNKNOWN/INACTIVE/ACTIVE; `money_log` quest ücretini yazmıyor; test VM kabulü PASS, UNKNOWN için tablo kilidi](2026-10-08-safebox-a19.md) | özellik / düzeltme / karar | server-src / server / tools | Aktif | — |
+| 2026-10-10 | [İsim değiştirme DB hatasında item'ı siliyordu (A-17 g19, g18 kontrolü): senkron UPDATE düşerken asenkron yan etkiler DB dönünce uygulanıyordu; "Karakter değiştir" listesi ve oyundaki ad kanıt değil; test VM önce/sonra PASS](2026-10-10-change-name-a17.md) | düzeltme / karar | server-src / server / tools | Aktif | #27 |
 
 <!-- Eski yıllar: README-<yıl>.md -->

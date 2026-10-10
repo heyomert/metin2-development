@@ -1,38 +1,29 @@
 # Durum
 
-Kapsadığı commit: `main` `1e1754b95` (PR #26 merge, 2026-10-10; kod `cf8073d09` ile aynı). **Üzerine yaz, ekleme yapma**; en fazla ~25 satır.
-Güncel mi? `git log --oneline 1e1754b95..origin/main -- . ':!docs/status.md'` bu güncelleme dışında bir şey gösteriyorsa eski olabilir.
+Kapsadığı commit: PR #27 (`fix/a17-change-name`, 2026-10-11; main = `32b9ac6a7`). **Üzerine yaz, ekleme yapma**; en fazla ~25 satır.
+Güncel mi? `git log --oneline origin/fix/a17-change-name..origin/main -- . ':!docs/status.md'` bir şey gösteriyorsa eski olabilir.
 
 ## Şu an
-- **AsyncSQL 2a** (`docs/engineering/db-step2-asyncsql-fix.md`, `docs/worklog/2026-10-07-asyncsql-2a.md`): **PR #22 merge edildi**
-  (`ee0a12a66`); test VM'de exact head ile gerçek client kabul testi PASS (`docs/worklog/2026-10-07-pr22-acceptance.md`), merge
-  sonucu runtime ağaçları test edilenle aynı. **Production kurulumu yok.**
-- **Regresyon tabanı** (`docs/engineering/regression-baseline.md`, `change-impact.md` §7, `tools/acceptance/outage.sh`): PR #23 merge edildi.
-- **Depo (A-23 + A-19)** (`docs/engineering/safebox-activation.md`): **`main`'de** — PR #24 + #25 merge edildi (`cf8073d09`; içerik
-  test edilenle aynı). Depo hesap özelliği, 500 yang hesap başına bir kez. Test VM gerçek client kabulleri PASS (A-23 `8f438cc0f`,
-  A-19 `71f346d85`). Kabul edilen kalan risk (tasarım §5): satır kalıcı kaldıkça hesap başına en fazla bir ücretsiz aktivasyon;
-  oyuncu para kaybı, çift ücret ya da item kaybı değil. **Production kurulumu yok; production'da D' kapısı ayrıca onaylanacak.**
-- **T-1, T-2:** test VM tamam (PR #21, #20); production temiz-git release yolu açık → production kurulumu fail-closed.
-- **DB standardı:** 1a/1b/1c ve 2a bitti (test VM). Production ☐.
+- **A-17 isim değiştirme (g19 + g18 DB hatası kısmı)** (`docs/worklog/2026-10-10-change-name-a17.md`): PR #27 hazır. Test VM'de
+  önce item kaybı uçtan uca kanıtlandı; yeni binary ile kesinti (A1), UPDATE reddi (A1b, geçici trigger kaldırıldı), kullanılan ad
+  (A3) ve başarı (A2) PASS; RB-01/06/10/14 PASS. **Merge onay bekliyor; production kurulumu yok.**
+- **Önceki işler `main`'de, production kurulumu yok:** AsyncSQL 2a (PR #22), regresyon tabanı (#23), depo A-23 + A-19 (#24, #25;
+  production'da D' kapısı ayrıca onaylanacak), T-1/T-2 (#21, #20; production temiz-git release yolu açık → fail-closed).
 
 ## Sıradaki (her adım ayrı etki analizi + onay)
-1. **A-17 kalan çağıran işi (ana hat)** (isim değiştirme, id 0 lonca, bahis iadesi, SELECT hata/boş, `QUERY_PLAYER_LOAD` sahipliği) → 2. 2b → 3. şema/migration standardı → 4. InnoDB
-Production/public açılıştan önce: **A-27** ekonomi atomikliği denetimi (yüksek öncelik, `docs/engineering/economy-atomicity-audit.md`);
-production kurulumunda depo D' kapısı (`docs/production-checklist.md`).
-Bağımsız: A-15 (channel service dalı), A-16 (diğer ham SQL logları), A-20 (depo protokol temizliği), A-24, A-25, A-26, A-21, A-22, T-3, T-4, `db.core`, A-14, A-12, CHECKPOINT, db "End of pid", release yolu.
+1. PR #27 merge → 2. A-17'nin kalanı (id 0 lonca g11, bahis iadesi d29, SELECT hata/boş g6 vb., `QUERY_PLAYER_LOAD` sahipliği)
+→ 3. 2b → 4. şema/migration standardı (A-28 ad benzersizliği dahil) → 5. InnoDB
+Production/public açılıştan önce: **A-27** ekonomi atomikliği (isim değiştirmede çökme sonrası bir ücretsiz değişiklik adayı dahil).
+Bağımsız: A-15, A-16, A-20, A-24, A-25, A-26, A-21, A-22, T-3, T-4, `db.core`, A-14, A-12, CHECKPOINT, db "End of pid", release yolu.
 
 ## Senden bekleyen kararlar
-- Temizlik: test VM `/root`'taki listelenmemiş eski dosyalar (aşağıda); A-27'nin başlangıcı
-- A-18: kesintide RST hız sınırı ~1 sn takılma (2a öncesinden) — ölçüm/tasarım ne zaman
+- PR #27 merge onayı; A-27'nin başlangıcı; test VM `/root`'taki listelenmemiş eski dosyalar
+- A-18: kesintide RST hız sınırı ~1 sn takılma — ölçüm/tasarım ne zaman
 - `heart_idle` fazladan pulse; binlog + PITR; uzun ad taşması; freetype; DPI; A-1 hile politikası; F-1; G-3, G-4
 
 ## Ortam
-Commit'lenmeyen yereller: `serverinfo.py` (VM IP), `locale.cfg`, `metin2.cfg`. GM `admin` (şifre repo dışında); `Metin2.exe` yönetici.
-Test VM: `pf` aktif, `m2dev_dbstat` açık; game/db = `71f346d85` (`src=archive`; kaynak ağacı `main` `cf8073d09` ile aynı) + A-19 quest'i; önceki çift
-`share/bin/.prev.20261010T012003Z.5083` (`8f438cc0f`), eski quest dosyaları `/root/pr2-acceptance-20261010/quest-prev`. Üç
-test hesabı (bilgileri repo dışında, secrets). `test` hesabı fixture'ı kabulde kullanıldı (artık satır + item). Windows'tan önce VM'i kapat
-(10 Ekim 06:25'te Windows kapanışı VM'i yine kesti; 21:28 açılışında Aria/InnoDB kurtarması temiz, `mariadb-check` 69/69 OK).
-VM temizliği (2026-10-10): listedeki geçici yollar ve DB kopyaları (`mysql-cold-*`, `aria-log-corrupt-*`) silindi. Production'a kadar tutulan:
-`/root/pr2-acceptance-20261010` (A-19 kanıtı + `quest-prev`), `share/bin/.prev.*`. `/root`'taki diğer eski dosyalar (ör. `build-1c`,
-`src-88912c7ab66c`, `k*-backup`, loglar) henüz sınıflandırılmadı. Yerel `stash@{0}` (sadece EOL). Worktree'ler ve merge edilmiş dallar silindi (2026-10-10): GitHub'da yalnız `main`, merge'de dal otomatik siliniyor;
-`m2dev-docs-wt` taslağı repo dışında `C:\Users\mertw\.m2dev\docs-wt-draft-2026-10-06.patch`.
+Commit'lenmeyen yereller: `serverinfo.py` (VM IP), `locale.cfg`, `metin2.cfg`, `client/mark/10_0.tga`. GM `admin`; `Metin2.exe` yönetici.
+Test VM: **game/db = `174ef0566` (PR #27, `src=archive`) + yeni `change_name.quest`**; önceki çift `share/bin/.prev.20261010T205007Z.13132`
+(`71f346d85`), eski quest dosyaları `/root/a17-quest-prev`, kanıt `/root/acceptance/a17-*`. Test karakteri `pr2a`/SbA4y (seviye 35,
+`next_time` dolu). `pf` aktif, `m2dev_dbstat` açık. Windows'tan önce VM'i kapat (`ssh bsd shutdown -p now`).
+Production'a kadar tutulan: `/root/pr2-acceptance-20261010`, `share/bin/.prev.*`. Yerel `stash@{0}` (sadece EOL).
