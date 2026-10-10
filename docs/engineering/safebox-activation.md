@@ -1,7 +1,8 @@
 # Depo (safebox): hesap aktivasyonu, ödeme ve erişim (A-19 / A-20 / A-23)
 
-Durum (2026-10-07): **PR-1 (A-23, açma intent'i) uygulanıyor; PR-2 (hesap aktivasyonu + ödeme) tasarımı onaylı, kodu
-yazılmadı.** Kanıt ve canlı test: `docs/worklog/2026-10-07-safebox-a23.md`. Roadmap: A-19, A-20, A-23 (+ yan bulgular A-24,
+Durum (2026-10-10): **PR-1 (A-23, açma intent'i) test VM kabulü PASS (`8f438cc0f`); PR-2 (hesap aktivasyonu + ödeme)
+test VM gerçek client kabulü PASS (`71f346d85`).** Kanıt: `docs/worklog/2026-10-07-safebox-a23.md`,
+`docs/worklog/2026-10-08-safebox-a19.md`. Roadmap: A-19, A-20, A-23 (+ yan bulgular A-24,
 A-25).
 
 ## 1. Ürün kontratı
@@ -45,7 +46,7 @@ Normal client parola penceresini her denemeden sonra kapatıyor (`uisafebox.py` 
 NPC'den geliyor; tek kullanımlık intent normal akışı değiştirmez. Değişen tek şey aynı oturumda NPC'siz elle komut yazmak.
 Süre sınırı (TTL) yok: tüketim + nesne ömrü + mesafe yeterli, keyfi eşik eklenmedi.
 
-## 4. Hesap aktivasyonu ve ödeme (PR-2 — onaylı tasarım, uygulanmadı)
+## 4. Hesap aktivasyonu ve ödeme (PR-2)
 
 **Durumlar** (hesap için DB'de; karakter nesnesinde önbellek): `UNKNOWN` (giriş sorgusu dönmedi/hata), `INACTIVE`, `ACTIVE`,
 `PENDING` (bu karakterin uçuşta isteği var). **Kaynak:** hesabın `safebox` satırı (PK `account_id`); eski veri kuralı: satır
@@ -67,8 +68,21 @@ CREATED, sonra ALREADY. `INSERT IGNORE` kullanılmaz (başka hataları gizler).
 olarak oyuncunundur; taşma kontrolü `hold`'u da sayar (iade asla taşmaya takılmaz). Yeni `GD/DG` paket çifti (A-20'ye
 dokunmaz) `hesap + pid + istek kimliği` taşır. CREATED → blokaj kalkar (ücret kesin, money log); ALREADY → iade, ACTIVE;
 FAILED → iade, UNKNOWN (yeniden sorgu). Eşleşmeyen ya da oturumu bitmiş sonuç → para işlemi yok, log satırı.
-Not: game `MONEY_LOG_QUEST` tipini `money_log`'a yazmıyor (`input_db.cpp:1737`); kesinleşen ücretin izi PR-2'de görünür bir yolla
-bırakılmalı.
+**Ödeme kanıtı:** game `MONEY_LOG_QUEST`'i `money_log`'a yazmıyor (`input_db.cpp:1737`); CREATED olan ücretli istek
+`log.log`'a bir `CHARACTER` satırı yazar: `how = SAFEBOX_ACTIVATE`, `what = 500`, `hint = created`, `who = pid`; IP, isim ve
+hesap yazılmaz (diğer ekonomik olaylar gibi `who = pid`). syslog: `SAFEBOX_ACTIVATION:` (game) ve `SAFEBOX_ACTIVATE:` (db)
+satırları yalnızca istek kimliği ve sonucu taşır.
+
+**Uygulama:** saf mantık `server-src/src/game/safebox_activation.h` (durumlar, blokaj, `ParseStatus`, `SavedGold`,
+`GainFits`) ve `server-src/src/db/SafeboxActivation.h` (ifade + sınıflandırma); paket `common/tables.h`
+(`TPacketGDSafeboxActivate`, `TPacketDGSafeboxActivateResult`, `ESafeboxActivateResult`), başlıklar GD `0x905D` /
+DG `0x915C`. Quest API: `game.get_safebox_activation()` (-1/0/1/2; UNKNOWN ise yeniden sorar),
+`game.request_safebox_activation(fee)` (0 gönderildi, 1 INACTIVE değil, 2 yang yetersiz, 3 meşgul, 4 geçersiz),
+`game.ensure_safebox_activation()` (ücretsiz; quest yalnızca `use` durumundaki karakter için çağırır). `game.open_safebox()`
+yalnızca ACTIVE'de intent verir. İade `SetGold` + senkron (kazanç kuralları uygulanmaz; `GainFits` yer bıraktı).
+Yeni quest fonksiyonları `quest/quest_functions`'ta kayıtlı (`qc` kayıtsız çağrıda durur). Derlenmiş durum indeksleri
+değişmedi (`start = 0`, `use = -1800287157`); mall ve külçe dükkânı script'leri byte byte aynı.
+Testler: `tools/safebox/test-activation-logic.cpp`, `tools/safebox/activation-sql-probe.sh`.
 
 **Eski veri:** A (satır+item), B (satır) → ACTIVE; C (satırsız+item) → ACTIVE + ensure (itemler korunur); D → INACTIVE;
 D' (satırsız, itemsiz, bir karakter eski sistemde ödemiş: quest `use`) → bölüm 6 kapısı.
@@ -90,6 +104,11 @@ Karşılaştırılıp reddedilen daha güçlü modeller: kalıcı PENDING (`size
 sonraki girişte uzlaşma karakter başına flag gerektirir (başka karakterle ya da silmeyle kaçılabilir; quest kaydı doğrudan SQL,
 gold gecikmeli → db çöküşünde yine açık); hesap borcu şema ister ve aynı pencereyi taşır. Ayrı aday (kabul edilmedi,
 **Unverified**): Aria'nın host çöküşünde son commit'i koruyup korumadığı (ödendi ama satır kayboldu).
+
+**Canlı gözlem (PR-2 kabulü, 2026-10-10):** ödeme isteği sırasında DB sonucu bekletilip (tablo kilidi) oyuncu çıkınca
+game `result … for a session that is gone, not settled` yazdı; hesap ACTIVE oldu, ücret satırı yazılmadı, oyuncunun yangı
+yeniden girişte ve restart sonrası DB'de tam kaldı. Kalan risk tasarlandığı gibi davrandı. Başka ekonomik akışlarda benzer
+bir pencere olup olmadığı ayrı denetimde: A-27 (`docs/engineering/economy-atomicity-audit.md`).
 
 ## 6. Kurulum kapısı: D' (production, PR-2 sürümü)
 
@@ -140,9 +159,19 @@ Canlıda değil, probe/kod ile: belirsiz sonuç, ODKU matrisi, hesap id = siline
 silme seviye sınırının üstünde), backfill öncesi D' ödeyen silme (kapı testi), GOLD_MAX'a yakın blokaj, bayat sonuç.
 RB (`change-impact.md` §7): PR-2 için RB-01, 04, 05, 06, 07, 10, 12, 13, 14; PR-1 ön kabulü için RB-05 + S1 elle komut + S6 + S7.
 
+**PR-2 kabul sonucu (2026-10-10, test VM, gerçek client): PASS.** Üç yeni test hesabı (A: yaşam döngüsü, B: UNKNOWN ve
+PENDING, C: PENDING sırasında çıkış) ve mevcut hesaplar. UNKNOWN ve PENDING, `player.safebox` üzerinde kısa süreli bir yazma
+kilidiyle üretildi (veri yazılmadı; kesinti girişi de beklettiği için UNKNOWN'ı üretemiyordu). Kanıtlanan: ilk aktivasyonda
+tek ücret ve `log.log` satırı; `<500` istek yok, `=500` → 0, `>500` → kalan; ikinci/yeni karakter ücretsiz; ödeyen ve
+bütün karakterler silinince ACTIVE; ortak item ve parola; satırlı hesap + eski `start`/`use` durumu; satırsız + itemli hesap
+ücretsiz satır, item yerinde; UNKNOWN'da istek yok; PENDING'de tekrar istek yok ve tek ücret; PENDING'de çıkışta para korunur
+(bölüm 5); restart sonrası kalıcılık; PR-1 ve mall regresyonu; 1062 = 0, `SAFEBOX_CHANGE_SIZE` = 0, ledger değişmedi,
+tekrar eden item id'si yok. Canlıda değil (yukarıdaki probe/birim kanıtı): D', ALREADY/FAILED iadesi, belirsiz sonuç,
+PENDING'de warp, premium, GOLD_MAX. Ayrıntı: `docs/worklog/2026-10-08-safebox-a19.md`.
+
 ## 9. Doğrulanmamış
 
 - Aria'nın host çöküşünde kalıcılığı (bölüm 5).
-- Quest yeniden derlenince `use` indeksinin aynı kalması (PR-2 kabulünde ölçülecek).
+- ~~Quest yeniden derlenince `use` indeksinin aynı kalması~~: doğrulandı (`use = -1800287157`, PR-2 kurulumu).
 - NPC tıklamasında sunucu tarafı mesafe kontrolü.
 - Eski Lua akışında `wait()/select()` arasında yang düşmesiyle ücretsiz aktivasyon (teknik borç; PR-2 bu akışı kaldırır).

@@ -300,6 +300,7 @@ void CHARACTER::Initialize()
 	m_posSafeboxOpen.x = -1000;
 	m_posSafeboxOpen.y = -1000;
 	m_bSafeboxOpenIntent = false;
+	m_kSafeboxActivation = safebox_activation::TState();
 
 	// EQUIP_LAST_SKILL_DELAY
 	m_dwLastSkillTime = get_dword_time();
@@ -1199,7 +1200,7 @@ void CHARACTER::CreatePlayerProto(TPlayerTable & tab)
 	tab.level		= GetLevel();
 	tab.level_step	= GetPoint(POINT_LEVEL_STEP);
 	tab.exp			= GetExp();
-	tab.gold		= GetGold();
+	tab.gold		= static_cast<int32_t>(safebox_activation::SavedGold(GetGold(), m_kSafeboxActivation)); // A-19 hold
 	tab.job			= m_points.job;
 	tab.part_base	= m_pointsInstant.bBasePart;
 	tab.skill_group	= m_points.skill_group;
@@ -3422,7 +3423,7 @@ void CHARACTER::PointChange(BYTE type, int amount, bool bAmount, bool bBroadcast
 			{
 				const int64_t nTotalMoney = static_cast<int64_t>(GetGold()) + static_cast<int64_t>(amount);
 
-				if (GOLD_MAX <= nTotalMoney)
+				if (!safebox_activation::GainFits(GetGold(), amount, m_kSafeboxActivation, GOLD_MAX))	// A-19: room for the hold
 				{
 					sys_err("[OVERFLOW_GOLD] OriGold %d AddedGold %d id %u Name %s ", GetGold(), amount, GetPlayerID(), GetName());
 					LogManager::instance().CharLog(this, GetGold() + amount, "OVERFLOW_GOLD", "");
@@ -5942,17 +5943,147 @@ int CHARACTER::GetLeadershipSkillLevel() const
 	return GetSkillLevel(SKILL_LEADERSHIP);
 }
 
-void CHARACTER::QuerySafeboxSize()
+static DWORD NextSafeboxActivationRequestID()
 {
-	if (m_iSafeboxSize == -1)
+	static DWORD s_dwLast = 0;
+
+	if (++s_dwLast == 0)
+		++s_dwLast;
+
+	return s_dwLast;
+}
+
+static const char * SafeboxActivateResultName(BYTE bResult)
+{
+	switch (bResult)
 	{
-		DBManager::instance().ReturnQuery(QID_SAFEBOX_SIZE,
-				GetPlayerID(),
-				NULL, 
-				"SELECT size FROM safebox%s WHERE account_id = %u",
-				get_table_postfix(),
-				GetDesc()->GetAccountTable().id);
+		case SAFEBOX_ACTIVATE_CREATED:	return "created";
+		case SAFEBOX_ACTIVATE_ALREADY:	return "already";
+		case SAFEBOX_ACTIVATE_FAILED:	return "failed";
+		default:						return "invalid";
 	}
+}
+
+// Read only: the account row and SAFEBOX items (the login UPDATE of the size is gone, A-19)
+void CHARACTER::QuerySafeboxActivation()
+{
+	if (!GetDesc() || m_kSafeboxActivation.bQueryInFlight)
+		return;
+
+	m_kSafeboxActivation.bQueryInFlight = true;
+
+	const DWORD dwAccountID = GetDesc()->GetAccountTable().id;
+	DBManager::instance().ReturnQuery(QID_SAFEBOX_STATUS, GetPlayerID(), NULL, SAFEBOX_ACTIVATION_STATUS_QUERY,
+			get_table_postfix(), dwAccountID, get_table_postfix(), dwAccountID);
+}
+
+void CHARACTER::SetSafeboxActivationStatus(const safebox_activation::TStatus& kStatus)
+{
+	m_kSafeboxActivation.bQueryInFlight = false;
+
+	// Same value game.get_safebox_level read before A-19
+	if (!kStatus.bFailed && kStatus.bHasRow)
+		m_iSafeboxSize = SAFEBOX_PAGE_SIZE * kStatus.iSize;
+
+	// Only an unknown state takes the answer; a request settled meanwhile knows better
+	if (m_kSafeboxActivation.iState != safebox_activation::STATE_UNKNOWN)
+		return;
+
+	m_kSafeboxActivation.iState = safebox_activation::StateFromStatus(kStatus);
+	sys_log(0, "SAFEBOX_ACTIVATION: status %d", m_kSafeboxActivation.iState);
+
+	// Legacy: SAFEBOX items without a row are an active account; give it its row, no fee
+	if (safebox_activation::NeedsRow(kStatus))
+	{
+		const DWORD dwRequestID = NextSafeboxActivationRequestID();
+
+		if (safebox_activation::Ensure(m_kSafeboxActivation, dwRequestID, true))
+			SendSafeboxActivation(dwRequestID);
+	}
+}
+
+int CHARACTER::GetSafeboxActivation()
+{
+	if (m_kSafeboxActivation.iState == safebox_activation::STATE_UNKNOWN)
+		QuerySafeboxActivation();
+
+	return m_kSafeboxActivation.iState;
+}
+
+int CHARACTER::RequestSafeboxActivation(int iFee)
+{
+	if (!GetDesc())
+		return safebox_activation::REQUEST_INVALID;
+
+	const DWORD dwRequestID = NextSafeboxActivationRequestID();
+	const int iRet = safebox_activation::Request(m_kSafeboxActivation, GetGold(), iFee, dwRequestID);
+
+	if (iRet != safebox_activation::REQUEST_SENT)
+		return iRet;
+
+	// Held, not paid: it cannot be spent, and every save still writes it as the player's gold (CreatePlayerProto)
+	PointChange(POINT_GOLD, -iFee, true);
+	SendSafeboxActivation(dwRequestID);
+	sys_log(0, "SAFEBOX_ACTIVATION: request %u sent, fee held", dwRequestID);
+	return iRet;
+}
+
+// A character that paid the per-character fee before A-19 while its account has no row and no SAFEBOX item
+bool CHARACTER::EnsureSafeboxActivation()
+{
+	if (!GetDesc())
+		return false;
+
+	const DWORD dwRequestID = NextSafeboxActivationRequestID();
+
+	if (!safebox_activation::Ensure(m_kSafeboxActivation, dwRequestID, false))
+		return false;
+
+	SendSafeboxActivation(dwRequestID);
+	sys_log(0, "SAFEBOX_ACTIVATION: request %u sent, no fee", dwRequestID);
+	return true;
+}
+
+void CHARACTER::SendSafeboxActivation(DWORD dwRequestID)
+{
+	TPacketGDSafeboxActivate p;
+	p.dwAccountID = GetDesc()->GetAccountTable().id;
+	p.dwPID = GetPlayerID();
+	p.dwRequestID = dwRequestID;
+
+	db_clientdesc->DBPacket(GD::SAFEBOX_ACTIVATE, GetDesc()->GetHandle(), &p, sizeof(p));
+}
+
+void CHARACTER::SettleSafeboxActivation(DWORD dwRequestID, BYTE bResult)
+{
+	const int iHold = m_kSafeboxActivation.iHold;
+	const bool bCreated = bResult == SAFEBOX_ACTIVATE_CREATED;
+	const bool bFailed = !bCreated && bResult != SAFEBOX_ACTIVATE_ALREADY;
+	const safebox_activation::TSettlement r = safebox_activation::Settle(m_kSafeboxActivation, dwRequestID, bFailed, bCreated);
+
+	if (!r.bMatched)
+	{
+		sys_log(0, "SAFEBOX_ACTIVATION: request %u result %s does not match this character's request, ignored",
+				dwRequestID, SafeboxActivateResultName(bResult));
+		return;
+	}
+
+	if (r.bCharged)
+	{
+		// Payment evidence: log.log CHARACTER row, what = fee (no IP, name or account)
+		LogManager::instance().CharLog(GetPlayerID(), 0, 0, iHold, "SAFEBOX_ACTIVATE", "created", "");
+		Save();
+	}
+
+	if (r.iRefund > 0)
+	{
+		// The player's own held gold, not income: no gain rule applies, and GainFits kept room for it
+		SetGold(GetGold() + r.iRefund);
+		PointChange(POINT_GOLD, 0);
+	}
+
+	sys_log(0, "SAFEBOX_ACTIVATION: request %u result %s, %s", dwRequestID, SafeboxActivateResultName(bResult),
+			r.bCharged ? "fee charged" : (r.iRefund > 0 ? "fee returned" : "no fee"));
 }
 
 void CHARACTER::SetSafeboxSize(int iSize)

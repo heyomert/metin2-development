@@ -297,6 +297,7 @@ protected:
 	void		SafeboxWrongPassword(LPDESC d);
 	void		SafeboxChangePasswordAnswer(LPDESC d, const char* c_pData);
 	void		MallLoad(LPDESC d, const char * c_pData);
+	void		SafeboxActivateResult(LPDESC d, const char * c_pData);
 	void		EmpireSelect(LPDESC d, const char * c_pData);
 	void		P2P(const char * c_pData);
 	void		ItemLoad(LPDESC d, const char * c_pData);
