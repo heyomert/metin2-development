@@ -445,6 +445,29 @@ typedef struct SSafeboxChangeSizePacket
 	uint8_t	bSize;
 } TSafeboxChangeSizePacket;
 
+// A-19: account-level safebox activation (docs/engineering/safebox-activation.md)
+enum ESafeboxActivateResult
+{
+	SAFEBOX_ACTIVATE_CREATED = 1,	// the row was inserted now: the held fee becomes the payment
+	SAFEBOX_ACTIVATE_ALREADY = 2,	// the row was there: no fee
+	SAFEBOX_ACTIVATE_FAILED = 3,	// not applied, or the outcome is unknown: no fee, the state is asked again
+};
+
+typedef struct SPacketGDSafeboxActivate
+{
+	uint32_t	dwAccountID;
+	uint32_t	dwPID;
+	uint32_t	dwRequestID;
+} TPacketGDSafeboxActivate;
+
+typedef struct SPacketDGSafeboxActivateResult
+{
+	uint32_t	dwAccountID;
+	uint32_t	dwPID;
+	uint32_t	dwRequestID;
+	uint8_t		bResult;	// ESafeboxActivateResult
+} TPacketDGSafeboxActivateResult;
+
 typedef struct SSafeboxLoadPacket
 {
 	uint32_t	dwID;

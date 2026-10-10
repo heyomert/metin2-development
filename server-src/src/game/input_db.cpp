@@ -468,7 +468,7 @@ void CInputDB::PlayerLoad(LPDESC d, const char * data)
 			ch->GetPoint(POINT_DEF_GRADE),
 			ch->GetGMLevel());
 
-	ch->QuerySafeboxSize();
+	ch->QuerySafeboxActivation();
 }
 
 void CInputDB::Boot(const char* data)
@@ -1202,6 +1202,24 @@ void CInputDB::MallLoad(LPDESC d, const char * c_pData)
 		return;
 
 	d->GetCharacter()->LoadMall(p->wItemCount, (TPlayerItem *) (c_pData + sizeof(TSafeboxTable)));
+}
+
+// A-19: result of GD::SAFEBOX_ACTIVATE. d is the session that asked, or NULL once it is gone.
+void CInputDB::SafeboxActivateResult(LPDESC d, const char * c_pData)
+{
+	const TPacketDGSafeboxActivateResult * p = (const TPacketDGSafeboxActivateResult *) c_pData;
+	LPCHARACTER ch = d ? d->GetCharacter() : NULL;
+
+	if (!ch || ch->GetPlayerID() != p->dwPID || d->GetAccountTable().id != p->dwAccountID)
+	{
+		// The asking session is gone (logout, warp, core change): its held fee was saved as its own gold, so nothing
+		// is settled here. A created row here is the accepted residual risk (safebox-activation.md, section 5).
+		sys_log(0, "SAFEBOX_ACTIVATION: request %u result %u for a session that is gone, not settled",
+				p->dwRequestID, p->bResult);
+		return;
+	}
+
+	ch->SettleSafeboxActivation(p->dwRequestID, p->bResult);
 }
 
 void CInputDB::LoginAlready(LPDESC d, const char * c_pData)
@@ -2057,6 +2075,7 @@ void CInputDB::RegisterHandlers()
 	m_handlers[DG::SAFEBOX_CHANGE_SIZE]        = &CInputDB::DescHandler<&CInputDB::SafeboxChangeSize>;
 	m_handlers[DG::SAFEBOX_CHANGE_PASSWORD_ANSWER] = &CInputDB::DescHandler<&CInputDB::SafeboxChangePasswordAnswer>;
 	m_handlers[DG::MALL_LOAD]                  = &CInputDB::DescHandler<&CInputDB::MallLoad>;
+	m_handlers[DG::SAFEBOX_ACTIVATE_RESULT]    = &CInputDB::DescHandler<&CInputDB::SafeboxActivateResult>;
 	m_handlers[DG::EMPIRE_SELECT]              = &CInputDB::DescHandler<&CInputDB::EmpireSelect>;
 	m_handlers[DG::CHANGE_NAME]                = &CInputDB::DescHandler<&CInputDB::ChangeName>;
 	m_handlers[DG::AUTH_LOGIN]                 = &CInputDB::DescHandler<&CInputDB::AuthLogin>;

@@ -139,14 +139,17 @@ forked.setdeadcount
 forked.warp_all_in_map
 game.drop_item
 game.drop_item_with_ownership
+game.ensure_safebox_activation
 game.get_event_flag
 game.get_guild_name
+game.get_safebox_activation
 game.get_safebox_level
 game.get_warp_guild_war_list
 game.open_mall
 game.open_safebox
 game.open_web_mall
 game.request_make_guild
+game.request_safebox_activation
 game.set_event_flag
 game.set_safebox_level
 get_channel_id

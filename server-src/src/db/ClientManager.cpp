@@ -10,6 +10,7 @@
 #include "Config.h"
 #include "DBManager.h"
 #include "QID.h"
+#include "SafeboxActivation.h"
 #include "GuildManager.h"
 #include "PrivManager.h"
 #include "MoneyLog.h"
@@ -814,6 +815,52 @@ void CClientManager::RESULT_SAFEBOX_CHANGE_SIZE(CPeer * pkPeer, SQLMsg * msg)
 		pkPeer->EncodeHeader(DG::SAFEBOX_CHANGE_SIZE, dwHandle, sizeof(BYTE));
 		pkPeer->EncodeBYTE(bSize);
 	}
+}
+
+// A-19: account-level activation (docs/engineering/safebox-activation.md). The game holds the fee until this result.
+struct SSafeboxActivateInfo
+{
+	DWORD						dwHandle;
+	TPacketGDSafeboxActivate	packet;
+};
+
+void CClientManager::QUERY_SAFEBOX_ACTIVATE(CPeer * pkPeer, DWORD dwHandle, const TPacketGDSafeboxActivate * p)
+{
+	auto * pi = new SSafeboxActivateInfo{ dwHandle, *p };
+
+	char szQuery[QUERY_MAX_LEN];
+	SafeboxActivateQuery(szQuery, sizeof(szQuery), GetTablePostfix(), p->dwAccountID);
+
+	CDBManager::instance().ReturnQuery(szQuery, QID_SAFEBOX_ACTIVATE, pkPeer->GetHandle(), pi);
+}
+
+void CClientManager::RESULT_SAFEBOX_ACTIVATE(CPeer * pkPeer, SQLMsg * msg)
+{
+	CQueryInfo * qi = (CQueryInfo *) msg->pvUserData;
+	std::unique_ptr<SSafeboxActivateInfo> pi((SSafeboxActivateInfo *) qi->pvData);
+
+	const SQLResult * res = msg->Get();
+	bool bUnexpected = false;
+
+	TPacketDGSafeboxActivateResult r;
+	r.dwAccountID = pi->packet.dwAccountID;
+	r.dwPID = pi->packet.dwPID;
+	r.dwRequestID = pi->packet.dwRequestID;
+	r.bResult = SafeboxActivateOutcome(msg->uiSQLErrno, res ? res->uiAffectedRows : 0, &bUnexpected);
+
+	if (bUnexpected)
+		sys_err("SAFEBOX_ACTIVATE: request %u: unexpected affected rows %u, read as already", r.dwRequestID, res->uiAffectedRows);
+
+	if (!pkPeer)
+	{
+		sys_log(0, "SAFEBOX_ACTIVATE: request %u result %s, the game core is gone", r.dwRequestID, SafeboxActivateOutcomeName(r.bResult));
+		return;
+	}
+
+	sys_log(0, "SAFEBOX_ACTIVATE: request %u result %s", r.dwRequestID, SafeboxActivateOutcomeName(r.bResult));
+
+	pkPeer->EncodeHeader(DG::SAFEBOX_ACTIVATE_RESULT, pi->dwHandle, sizeof(r));
+	pkPeer->Encode(&r, sizeof(r));
 }
 
 void CClientManager::QUERY_SAFEBOX_CHANGE_PASSWORD(CPeer * pkPeer, DWORD dwHandle, TSafeboxChangePasswordPacket * p)
@@ -2135,6 +2182,15 @@ void CClientManager::ProcessPackets(CPeer * peer)
 				QUERY_SAFEBOX_CHANGE_PASSWORD(peer, dwHandle, (TSafeboxChangePasswordPacket *) data);
 				break;
 
+			case GD::SAFEBOX_ACTIVATE:
+				if (dwLength != sizeof(TPacketGDSafeboxActivate))
+				{
+					sys_err("GD::SAFEBOX_ACTIVATE: wrong length %u", dwLength);
+					break;
+				}
+				QUERY_SAFEBOX_ACTIVATE(peer, dwHandle, (const TPacketGDSafeboxActivate *) data);
+				break;
+
 			case GD::MALL_LOAD:
 				QUERY_SAFEBOX_LOAD(peer, dwHandle, (TSafeboxLoadPacket *) data, 1);
 				break;
@@ -2498,6 +2554,11 @@ int CClientManager::AnalyzeQueryResult(SQLMsg * msg)
 	{
 		case QID_ITEM_AWARD_LOAD:
 			ItemAwardManager::instance().Load(msg);
+			delete qi;
+			return true;
+
+		case QID_SAFEBOX_ACTIVATE:	// before the peer check: it frees its own data and logs a result nobody receives
+			RESULT_SAFEBOX_ACTIVATE(peer, msg);
 			delete qi;
 			return true;
 

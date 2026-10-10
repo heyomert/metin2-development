@@ -427,19 +427,18 @@ void DBManager::AnalyzeReturnQuery(SQLMsg * pMsg)
 			}
 			break;
 
-		case QID_SAFEBOX_SIZE:
+		case QID_SAFEBOX_STATUS:
 			{
 				LPCHARACTER ch = CHARACTER_MANAGER::instance().FindByPID(qi->dwIdent);
 
 				if (ch)
 				{
-					if (pMsg->Get()->uiNumRows > 0)
-					{
-						MYSQL_ROW row = mysql_fetch_row(pMsg->Get()->pSQLResult);
-						int	size = 0;
-						str_to_number(size, row[0]);
-						ch->SetSafeboxSize(SAFEBOX_PAGE_SIZE * size);
-					}
+					SQLResult * res = pMsg->Get();
+					const bool bFailed = pMsg->uiSQLErrno != 0 || !res || !res->pSQLResult || res->uiNumRows != 1;
+					MYSQL_ROW row = bFailed ? NULL : mysql_fetch_row(res->pSQLResult);
+
+					ch->SetSafeboxActivationStatus(safebox_activation::ParseStatus(bFailed || !row,
+								row ? row[0] : NULL, row ? row[1] : NULL));
 				}
 			}
 			break;

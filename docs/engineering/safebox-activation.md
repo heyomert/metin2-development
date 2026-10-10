@@ -1,7 +1,8 @@
 # Depo (safebox): hesap aktivasyonu, ödeme ve erişim (A-19 / A-20 / A-23)
 
-Durum (2026-10-07): **PR-1 (A-23, açma intent'i) uygulanıyor; PR-2 (hesap aktivasyonu + ödeme) tasarımı onaylı, kodu
-yazılmadı.** Kanıt ve canlı test: `docs/worklog/2026-10-07-safebox-a23.md`. Roadmap: A-19, A-20, A-23 (+ yan bulgular A-24,
+Durum (2026-10-08): **PR-1 (A-23, açma intent'i) test VM kabulü PASS (`8f438cc0f`); PR-2 (hesap aktivasyonu + ödeme)
+uygulandı (yerel, test VM kabulü bekliyor).** Kanıt: `docs/worklog/2026-10-07-safebox-a23.md`,
+`docs/worklog/2026-10-08-safebox-a19.md`. Roadmap: A-19, A-20, A-23 (+ yan bulgular A-24,
 A-25).
 
 ## 1. Ürün kontratı
@@ -45,7 +46,7 @@ Normal client parola penceresini her denemeden sonra kapatıyor (`uisafebox.py` 
 NPC'den geliyor; tek kullanımlık intent normal akışı değiştirmez. Değişen tek şey aynı oturumda NPC'siz elle komut yazmak.
 Süre sınırı (TTL) yok: tüketim + nesne ömrü + mesafe yeterli, keyfi eşik eklenmedi.
 
-## 4. Hesap aktivasyonu ve ödeme (PR-2 — onaylı tasarım, uygulanmadı)
+## 4. Hesap aktivasyonu ve ödeme (PR-2)
 
 **Durumlar** (hesap için DB'de; karakter nesnesinde önbellek): `UNKNOWN` (giriş sorgusu dönmedi/hata), `INACTIVE`, `ACTIVE`,
 `PENDING` (bu karakterin uçuşta isteği var). **Kaynak:** hesabın `safebox` satırı (PK `account_id`); eski veri kuralı: satır
@@ -67,8 +68,21 @@ CREATED, sonra ALREADY. `INSERT IGNORE` kullanılmaz (başka hataları gizler).
 olarak oyuncunundur; taşma kontrolü `hold`'u da sayar (iade asla taşmaya takılmaz). Yeni `GD/DG` paket çifti (A-20'ye
 dokunmaz) `hesap + pid + istek kimliği` taşır. CREATED → blokaj kalkar (ücret kesin, money log); ALREADY → iade, ACTIVE;
 FAILED → iade, UNKNOWN (yeniden sorgu). Eşleşmeyen ya da oturumu bitmiş sonuç → para işlemi yok, log satırı.
-Not: game `MONEY_LOG_QUEST` tipini `money_log`'a yazmıyor (`input_db.cpp:1737`); kesinleşen ücretin izi PR-2'de görünür bir yolla
-bırakılmalı.
+**Ödeme kanıtı:** game `MONEY_LOG_QUEST`'i `money_log`'a yazmıyor (`input_db.cpp:1737`); CREATED olan ücretli istek
+`log.log`'a bir `CHARACTER` satırı yazar: `how = SAFEBOX_ACTIVATE`, `what = 500`, `hint = created`, `who = pid`; IP, isim ve
+hesap yazılmaz (diğer ekonomik olaylar gibi `who = pid`). syslog: `SAFEBOX_ACTIVATION:` (game) ve `SAFEBOX_ACTIVATE:` (db)
+satırları yalnızca istek kimliği ve sonucu taşır.
+
+**Uygulama:** saf mantık `server-src/src/game/safebox_activation.h` (durumlar, blokaj, `ParseStatus`, `SavedGold`,
+`GainFits`) ve `server-src/src/db/SafeboxActivation.h` (ifade + sınıflandırma); paket `common/tables.h`
+(`TPacketGDSafeboxActivate`, `TPacketDGSafeboxActivateResult`, `ESafeboxActivateResult`), başlıklar GD `0x905D` /
+DG `0x915C`. Quest API: `game.get_safebox_activation()` (-1/0/1/2; UNKNOWN ise yeniden sorar),
+`game.request_safebox_activation(fee)` (0 gönderildi, 1 INACTIVE değil, 2 yang yetersiz, 3 meşgul, 4 geçersiz),
+`game.ensure_safebox_activation()` (ücretsiz; quest yalnızca `use` durumundaki karakter için çağırır). `game.open_safebox()`
+yalnızca ACTIVE'de intent verir. İade `SetGold` + senkron (kazanç kuralları uygulanmaz; `GainFits` yer bıraktı).
+Yeni quest fonksiyonları `quest/quest_functions`'ta kayıtlı (`qc` kayıtsız çağrıda durur). Derlenmiş durum indeksleri
+değişmedi (`start = 0`, `use = -1800287157`); mall ve külçe dükkânı script'leri byte byte aynı.
+Testler: `tools/safebox/test-activation-logic.cpp`, `tools/safebox/activation-sql-probe.sh`.
 
 **Eski veri:** A (satır+item), B (satır) → ACTIVE; C (satırsız+item) → ACTIVE + ensure (itemler korunur); D → INACTIVE;
 D' (satırsız, itemsiz, bir karakter eski sistemde ödemiş: quest `use`) → bölüm 6 kapısı.
