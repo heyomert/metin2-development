@@ -87,6 +87,6 @@ for r in $(seq 1 "$RUNS"); do
 done
 same=1
 for r in $(seq 2 "$RUNS"); do cmp -s "$W/out/run1/out.txt" "$W/out/run$r/out.txt" || same=0; done
-echo "=== runs identical: $same/$RUNS"
+if [ "$same" -eq 1 ]; then echo "=== all $RUNS runs identical: yes"; else echo "=== all $RUNS runs identical: NO"; fi
 cat "$W/out/run1/out.txt"
 [ "$same" -eq 1 ] || for r in $(seq 2 "$RUNS"); do echo "--- run $r"; cat "$W/out/run$r/out.txt"; done
