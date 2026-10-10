@@ -34,5 +34,6 @@ olarak kopyala (aynı gün isim çakışırsa `-2`).
 | 2026-10-07 | [Depo ödeme kapısı sunucuda yok (A-23); mall depo kapısını açıyordu; karakter silme ve aktivasyon probe'ları](2026-10-07-safebox-a23.md) | düzeltme / karar | server-src / server / db | Aktif | — |
 | 2026-10-08 | [Depo hesap aktivasyonu (A-19): idempotent satır, blokajlı ücret, UNKNOWN/INACTIVE/ACTIVE; `money_log` quest ücretini yazmıyor; test VM kabulü PASS, UNKNOWN için tablo kilidi](2026-10-08-safebox-a19.md) | özellik / düzeltme / karar | server-src / server / tools | Aktif | — |
 | 2026-10-10 | [İsim değiştirme DB hatasında item'ı siliyordu (A-17 g19, g18 kontrolü): senkron UPDATE düşerken asenkron yan etkiler DB dönünce uygulanıyordu; "Karakter değiştir" listesi ve oyundaki ad kanıt değil; test VM önce/sonra PASS](2026-10-10-change-name-a17.md) | düzeltme / karar | server-src / server / tools | Aktif | #27 |
+| 2026-10-11 | [Lonca kurma INSERT'i başarısız olunca hayalet lonca 0 ve `UNIQUE pid` ile kalıcı üyelik kilidi; sonraki kurulumda ücret alınıp lider eklenmiyordu (A-17 g11); yedek işaret dosyalarını içermiyor](2026-10-11-guild-create-a17.md) | düzeltme / karar | server-src / db / tools | Aktif | #28 |
 
 <!-- Eski yıllar: README-<yıl>.md -->

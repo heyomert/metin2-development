@@ -103,6 +103,14 @@ DWORD CGuildManager::CreateGuild(TGuildCreateParameter& gcp)
 	// new CGuild(gcp) queries guild tables and tell dbcache to notice other game servers.
 	// other game server calls CGuildManager::LoadGuild to load guild.
 	CGuild * pg = M2_NEW CGuild(gcp);
+
+	// The INSERT failed and the constructor started nothing (A-17 g11): no guild object, the caller takes no fee
+	if (!pg->GetID())
+	{
+		M2_DELETE(pg);
+		return 0;
+	}
+
 	m_mapGuild.insert(std::make_pair(pg->GetID(), pg));
 	return pg->GetID();
 }

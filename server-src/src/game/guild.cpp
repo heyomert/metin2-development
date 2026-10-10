@@ -18,6 +18,7 @@
 #include "questmanager.h"
 #include "MarkManager.h"
 #include "MarkImage.h"
+#include "guild_create_result.h"
 
 	SGuildMember::SGuildMember(LPCHARACTER ch, BYTE grade, DWORD offer_exp)
 : pid(ch->GetPlayerID()), grade(grade), is_general(0), job(ch->GetJob()), level(ch->GetLevel()), offer_exp(offer_exp), name(ch->GetName())
@@ -79,7 +80,15 @@ CGuild::CGuild(TGuildCreateParameter & cp)
 				"VALUES('%s', %u, 1000, 1, 0, 0, '\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0')", 
 				get_table_postfix(), m_data.name, m_data.master_pid);
 
-	// TODO if error occur?
+	// No side effect may start without the guild row (A-17 g11): CGuildManager::CreateGuild drops a guild with id 0
+	if (!guild_create::InsertCreatedGuild(pmsg->eResult == ESQLResult::APPLIED, pmsg->Get()->uiInsertID))
+	{
+		sys_err("GUILD_CREATE: failed master_pid=%u result=%s errno=%u", m_data.master_pid, SQLResultName(pmsg->eResult),
+				pmsg->uiSQLErrno);
+		m_data.guild_id = 0;
+		return;
+	}
+
 	m_data.guild_id = pmsg->Get()->uiInsertID;
 
 	for (int i = 0; i < GUILD_GRADE_COUNT; ++i)
