@@ -1,7 +1,7 @@
 # Durum
 
-Kapsadığı commit: `main` `cf8073d09` (PR #24 merge, 2026-10-10; PR #25 stacked merge `ce2d7d493`). **Üzerine yaz, ekleme yapma**; en fazla ~25 satır.
-Güncel mi? `git log --oneline cf8073d09..origin/main -- . ':!docs/status.md'` bu güncelleme dışında bir şey gösteriyorsa eski olabilir.
+Kapsadığı commit: `main` `1e1754b95` (PR #26 merge, 2026-10-10; kod `cf8073d09` ile aynı). **Üzerine yaz, ekleme yapma**; en fazla ~25 satır.
+Güncel mi? `git log --oneline 1e1754b95..origin/main -- . ':!docs/status.md'` bu güncelleme dışında bir şey gösteriyorsa eski olabilir.
 
 ## Şu an
 - **AsyncSQL 2a** (`docs/engineering/db-step2-asyncsql-fix.md`, `docs/worklog/2026-10-07-asyncsql-2a.md`): **PR #22 merge edildi**
@@ -22,7 +22,7 @@ production kurulumunda depo D' kapısı (`docs/production-checklist.md`).
 Bağımsız: A-15 (channel service dalı), A-16 (diğer ham SQL logları), A-20 (depo protokol temizliği), A-24, A-25, A-26, A-21, A-22, T-3, T-4, `db.core`, A-14, A-12, CHECKPOINT, db "End of pid", release yolu.
 
 ## Senden bekleyen kararlar
-- Temizlik: test VM geçici yolları/kanıtlar ve yerel worktree'ler (aşağıda); A-27'nin başlangıcı
+- Temizlik: test VM geçici yolları/kanıtlar (aşağıda); A-27'nin başlangıcı
 - A-18: kesintide RST hız sınırı ~1 sn takılma (2a öncesinden) — ölçüm/tasarım ne zaman
 - `heart_idle` fazladan pulse; binlog + PITR; uzun ad taşması; freetype; DPI; A-1 hile politikası; F-1; G-3, G-4
 
@@ -33,4 +33,5 @@ Test VM: `pf` aktif, `m2dev_dbstat` açık; game/db = `71f346d85` (`src=archive`
 test hesabı (bilgileri repo dışında, secrets). `test` hesabı fixture'ı kabulde kullanıldı (artık satır + item). Windows'tan önce VM'i kapat.
 Silme onayı bekleyen: `/root` DB kopyaları (`mysql-cold-*`, `aria-log-corrupt-*`); geçici `/root/{t2a,t2b,build-t2a,build-t2b,t2-tools,1c-tools,src-1c,
 t2-e2e,t1-e2e,src-t1,build-t1,src-2a,build-2a,asyncsql-probe,pr22-e2e,c1-check,build-c1,acceptance,outage-tooltest.sh}`, `/root/*f62f10833b44*`, `/root/*8fbec5899676*`, `/root/{outage-e4c5596d.sh,sbprobe-a19,sbprobe-a23,server-src-a23-pr1.tar.gz,src-a23-pr1,build-a23-pr1,build-a23-pr1-*.log,server-src-8f438cc0fcb8.tar.gz,src-8f438cc0fcb8,build-8f438cc0fcb8,build-8f438cc0fcb8.*.log,src-a19-pre,build-a19-pre*,a19-pre.tar.gz,quest-a19-check,quest-a19-check2,probe-compile-a19,src-71f346d85a18,build-71f346d85a18*,a19-71f346d85a18.tar.gz,tools-c8d19d368bab,pr2-acceptance-20261010}`, `/var/tmp/m2sbprobe-*`, `/tmp/outage-test*`, `/var/tmp/{t1-probe,m2inst-rollback-check,eb-run,eb-old,eb-new,m2keep-2a,m2keep-2a-off,m2keep-a17,m2keep-final,m2mix}, /tmp/{d6-old,d6-2a}.txt, /tmp/{sqlline.txt,sz.cpp,sz-old,sz-new,on.txt,off.txt,p1,p2,d7o,d7n,d7os}`;
-yerel `m2dev-a23-wt`, `m2dev-a19-wt`, `m2dev-gate-wt`, `m2dev-mainverify-wt` (merge edilmiş depo dalları; uzak dallar duruyor), `m2dev-docs-wt`, `m2dev-a12fix`, `m2dev-main-wt`, stash, `feat/build-identity`, `feat/syserr-preserve` ve `feat/asyncsql-2a` dalları.
+yerel `stash@{0}` (sadece EOL). Worktree'ler ve merge edilmiş dallar silindi (2026-10-10): GitHub'da yalnız `main`, merge'de dal otomatik siliniyor;
+`m2dev-docs-wt` taslağı repo dışında `C:\Users\mertw\.m2dev\docs-wt-draft-2026-10-06.patch`.
