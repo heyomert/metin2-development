@@ -57,6 +57,11 @@ Sunucu VM'de `service m2dev` olarak çalışır. Ayrıntı: `docs/build-and-run.
 - Doküman, yazım hatası, `.gitignore`, geliştirme script'leri → doğrudan commit olur.
 - PR metni: problem · kök neden/kanıt · değişiklik · test · gereken yeniden derleme/paketleme/migration.
 - Aynı PR'da: etkilenen dokümanı güncelle ve açık olmayan bir şey öğrenildiyse worklog kaydı ekle.
+- **Dallar:** Merge edilen PR'ın dalı GitHub'da otomatik silinir (repo ayarı). Yerelde `git fetch --prune` ve `git branch -d`
+  (`-D` değil: merge edilmemiş dalı silmeyi reddeder). Elle silinmez: uzun ömürlü dallar (`main`, ileride `release`/`staging`/
+  `production`) ve `main`'e merge edilmemiş commit taşıyan dallar. Uzun ömürlü dal açılınca GitHub ruleset'te "Restrict
+  deletions" ile korunur; böyle bir dal PR head'i olarak merge edilecekse otomatik silmeye karşı önce bu koruma doğrulanır.
+  Silme yine "Önce sor" kuralına tabidir.
 
 ## Durum dosyası
 
