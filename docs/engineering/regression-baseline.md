@@ -130,14 +130,17 @@ Her senaryo: **Amaç · Ön koşul · Adımlar · Client gözlemi · Sunucu/DB k
   `/item 71055` ile (test karakterine geçici `common.gmlist` satırı; testten sonra kaldırılır). Messenger etkisini görmek
   için karaktere iki yönlü bir `messenger_list` fixture'ı.
 - **Adımlar:** (a) DB açıkken yeni adla kullan; (b) kullanılan bir adla kullan; (c) isim kutusu açıkken `outage.sh`, MariaDB
-  kapandıktan sonra adı yaz. Her birinden sonra çık → karakter listesi → gir; (c)'de ayrıca 10 dk bekleyip (`g_iLogoutSeconds`,
-  `db/Main.cpp:34`, önbellek boşalır) tekrar gir.
+  kapandıktan sonra adı yaz; (d) UPDATE hatası yolu için (tam kesintide ad kontrolü önce düşer) test VM'de yalnız bir ada
+  özel geçici `BEFORE UPDATE` trigger'ı (`SIGNAL`), test sonrası kaldırılıp `information_schema.TRIGGERS` ile doğrulanır.
+  Her birinden sonra **tam giriş** (giriş ekranına dön → gir): "Karakter değiştir" ekranı ilk girişteki listeyi gösterir,
+  kanıt değildir (`game/cmd_general.cpp:303-310`). (c)'de ayrıca çıkıştan 10 dk sonra (`g_iLogoutSeconds`, `db/Main.cpp:34`,
+  önbellek boşalır) tekrar gir.
 - **Kanıt:** `player.name`, `player.item` (vnum 71055), `messenger_list`, `log.change_name`, `log.log` (`CHANGE_NAME`),
   `player.quest` (`chagne_name.next_time`), syserr `CHANGE_NAME: failed pid=… step=… result=…`, hata defteri
   (`select.player`/`update.player`).
 - **PASS:** (a) ad listede ve oyunda yeni, DB yeni, item gitti, messenger temizlendi, log ve bekleme süresi yazıldı.
-  (b) "name is not available", hiçbir şey değişmedi. (c) "could not be changed" mesajı, item ve messenger duruyor, bekleme
-  süresi ve `change_name` log satırı yok, ad listede, oyunda ve DB'de eski.
+  (b) "name is not available", hiçbir şey değişmedi. (c) ve (d) "could not be changed" mesajı, item ve messenger duruyor,
+  bekleme süresi ve `change_name` log satırı yok, ad listede, oyunda ve DB'de eski; syserr `step=check` (c) / `step=update` (d).
 - **Kanıtlamadığı:** AMBIGUOUS (sorgu gönderildi, cevap okunamadı) uçtan uca üretilemiyor; karar mantığı
   `tools/change-name/test-change-name-logic.cpp` ile. Aynı anda aynı adı seçen iki oyuncu (g18 yarışı, ayrı iş).
 
