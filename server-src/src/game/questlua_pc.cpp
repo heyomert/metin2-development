@@ -22,6 +22,8 @@
 #include "utils.h"
 #include "unique_item.h"
 #include "mob_manager.h"
+#include "change_name_result.h"
+#include "libsql/SQLRead.h"
 #include <cctype>
 
 #undef sys_err
@@ -2085,6 +2087,7 @@ teleport_area:
 		//		3: 이미 같은 이름이 사용중
 		//		4: 성공
 		//		5: 해당 기능 지원하지 않음
+		//		6: database error, nothing changed or consumed (change_name::RET_DB_ERROR, change_name_result.h)
 
 		// if ( LC_IsEurope() ) // Fix
 		// {
@@ -2114,29 +2117,44 @@ teleport_area:
 			return 1;
 		}
 
+		DWORD pid = ch->GetPlayerID();
+
 		char szQuery[1024];
 		snprintf(szQuery, sizeof(szQuery), "SELECT COUNT(*) FROM player%s WHERE name='%s'", get_table_postfix(), szName);
 		auto pmsg = DBManager::instance().DirectQuery(szQuery);
 
-		if ( pmsg->Get()->uiNumRows > 0 )
+		// A failed check is not "name free" (A-17 g18): nothing is changed or consumed
+		long long llCount = 0;
+		const bool bCounted = SQLReadFirstInt(pmsg.get(), llCount);
+		const int iCheck = change_name::AfterNameCheck(bCounted, llCount);
+
+		if (iCheck != change_name::CHECK_PASSED)
 		{
-			MYSQL_ROW row = mysql_fetch_row(pmsg->Get()->pSQLResult);
+			if (iCheck == change_name::RET_DB_ERROR)
+				sys_err("CHANGE_NAME: failed pid=%u step=check result=%s errno=%u", pid, SQLResultName(pmsg->eResult), pmsg->uiSQLErrno);
 
-			int	count = 0;
-			str_to_number(count, row[0]);
-
-			// 이미 해당 이름을 가진 캐릭터가 있음
-			if ( count != 0 )
-			{
-				lua_pushnumber(L, 3);
-				return 1;
-			}
+			lua_pushnumber(L, iCheck);
+			return 1;
 		}
 
-		DWORD pid = ch->GetPlayerID();
 		// db_clientdesc->DBPacketHeader(GD::FLUSH_CACHE, 0, sizeof(DWORD));
 		// db_clientdesc->Packet(&pid, sizeof(DWORD));
 		ch->Save(); // Fix
+
+		snprintf(szQuery, sizeof(szQuery), "UPDATE player%s SET name='%s' WHERE id=%u", get_table_postfix(), szName, pid);
+		pmsg = DBManager::instance().DirectQuery(szQuery);
+
+		// Side effects only after the name really changed (A-17 g19): before, a failed UPDATE was never read, the quest
+		// consumed the item, and the messenger list and the change_name log were already gone/written
+		const int iRet = change_name::AfterUpdate(pmsg->eResult == ESQLResult::APPLIED, pmsg->Get()->uiAffectedRows);
+
+		if (iRet != change_name::RET_CHANGED)
+		{
+			sys_err("CHANGE_NAME: failed pid=%u step=update result=%s errno=%u affected=%u", pid, SQLResultName(pmsg->eResult),
+					pmsg->uiSQLErrno, pmsg->Get()->uiAffectedRows);
+			lua_pushnumber(L, iRet);
+			return 1;
+		}
 
 		/* delete messenger list */
 		MessengerManager::instance().RemoveAllList(ch->GetName());
@@ -2144,11 +2162,8 @@ teleport_area:
 		/* change_name_log */
 		LogManager::instance().ChangeNameLog(pid, ch->GetName(), szName, ch->GetDesc()->GetHostName());
 
-		snprintf(szQuery, sizeof(szQuery), "UPDATE player%s SET name='%s' WHERE id=%u", get_table_postfix(), szName, pid);
-		DBManager::instance().DirectQuery(szQuery);
-
 		ch->SetNewName(szName);
-		lua_pushnumber(L, 4);
+		lua_pushnumber(L, iRet);
 		return 1;
 	}
 

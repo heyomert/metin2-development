@@ -89,6 +89,13 @@ quest chagne_name begin
 				pc.setqf("next_time", get_time() + time_hour_to_sec(24*15))
 
 				char_log(0, "CHANGE_NAME", "SUCCESS: from "..name.." to "..str)
+			elseif ret == 6 then
+				-- database error: the name was not changed; the item and the cooldown are kept (A-17)
+				say("Your name could not be changed right now.")
+				say("Your item was not used. Please try again later.")
+				say("")
+
+				char_log(0, "CHANGE_NAME", "DB ERROR")
 			else
 				say("Unknown error occured.")
 				say("")

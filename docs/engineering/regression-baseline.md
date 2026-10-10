@@ -123,5 +123,23 @@ Her senaryo: **Amaç · Ön koşul · Adımlar · Client gözlemi · Sunucu/DB k
   (değilse açıklanır).
 - **PASS:** sızıntı 0, defter sayaçlarla tutarlı. **Kanıtlamadığı:** defterin yük altındaki kapasitesi.
 
+### RB-15 İsim değiştirme (Tincture of the Name, 71055)
+- **Amaç:** item ve bekleme süresi yalnız ad gerçekten değiştiğinde tüketilir; ad listede, oyunda ve DB'de tutarlı (A-17 g19,
+  `docs/worklog/2026-10-10-change-name-a17.md`).
+- **Ön koşul:** seviye ≥ 35, loncasız, partisiz, evli değil, `chagne_name.next_time` dolmamış bir test karakteri; item GM
+  `/item 71055` ile (test karakterine geçici `common.gmlist` satırı; testten sonra kaldırılır). Messenger etkisini görmek
+  için karaktere iki yönlü bir `messenger_list` fixture'ı.
+- **Adımlar:** (a) DB açıkken yeni adla kullan; (b) kullanılan bir adla kullan; (c) isim kutusu açıkken `outage.sh`, MariaDB
+  kapandıktan sonra adı yaz. Her birinden sonra çık → karakter listesi → gir; (c)'de ayrıca 10 dk bekleyip (`g_iLogoutSeconds`,
+  `db/Main.cpp:34`, önbellek boşalır) tekrar gir.
+- **Kanıt:** `player.name`, `player.item` (vnum 71055), `messenger_list`, `log.change_name`, `log.log` (`CHANGE_NAME`),
+  `player.quest` (`chagne_name.next_time`), syserr `CHANGE_NAME: failed pid=… step=… result=…`, hata defteri
+  (`select.player`/`update.player`).
+- **PASS:** (a) ad listede ve oyunda yeni, DB yeni, item gitti, messenger temizlendi, log ve bekleme süresi yazıldı.
+  (b) "name is not available", hiçbir şey değişmedi. (c) "could not be changed" mesajı, item ve messenger duruyor, bekleme
+  süresi ve `change_name` log satırı yok, ad listede, oyunda ve DB'de eski.
+- **Kanıtlamadığı:** AMBIGUOUS (sorgu gönderildi, cevap okunamadı) uçtan uca üretilemiyor; karar mantığı
+  `tools/change-name/test-change-name-logic.cpp` ile. Aynı anda aynı adı seçen iki oyuncu (g18 yarışı, ayrı iş).
+
 ## İlk koşu özeti (PR #22, 2026-10-07; tekrar ölçüt değil)
 RB-01…RB-14 PASS. Bulunan ve 2a'dan bağımsız olanlar roadmap A-19…A-22'de.
