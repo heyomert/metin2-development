@@ -76,16 +76,54 @@ namespace quest
 	{
 		CQuestManager& q = CQuestManager::instance();
 		LPCHARACTER ch = q.GetCurrentCharacterPtr();
-		ch->SetSafeboxOpenPosition();
+
+		// A-19: only an active account's safebox opens; the quest tells the player why not
+		if (ch->GetSafeboxActivation() != safebox_activation::STATE_ACTIVE)
+			return 0;
+
+		ch->SetSafeboxOpenIntent();
 		ch->ChatPacket(CHAT_TYPE_COMMAND, "ShowMeSafeboxPassword");
 		return 0;
+	}
+
+	// A-19 account-level activation (docs/engineering/safebox-activation.md). Values: safebox_activation.h
+	// get: -1 unknown (asks again), 0 inactive, 1 active, 2 pending
+	int game_get_safebox_activation(lua_State* L)
+	{
+		LPCHARACTER ch = CQuestManager::instance().GetCurrentCharacterPtr();
+		lua_pushnumber(L, ch ? ch->GetSafeboxActivation() : safebox_activation::STATE_UNKNOWN);
+		return 1;
+	}
+
+	// request(fee): 0 sent (fee held), 1 not inactive, 2 not enough gold, 3 busy, 4 invalid
+	int game_request_safebox_activation(lua_State* L)
+	{
+		LPCHARACTER ch = CQuestManager::instance().GetCurrentCharacterPtr();
+
+		if (!ch || !lua_isnumber(L, 1))
+		{
+			lua_pushnumber(L, safebox_activation::REQUEST_INVALID);
+			return 1;
+		}
+
+		lua_pushnumber(L, ch->RequestSafeboxActivation((int) lua_tonumber(L, 1)));
+		return 1;
+	}
+
+	// No fee: only for a character that paid per character before A-19 (stash state "use") on an inactive account
+	int game_ensure_safebox_activation(lua_State* L)
+	{
+		LPCHARACTER ch = CQuestManager::instance().GetCurrentCharacterPtr();
+		lua_pushboolean(L, ch && ch->EnsureSafeboxActivation());
+		return 1;
 	}
 
 	int game_open_mall(lua_State* /*L*/)
 	{
 		CQuestManager& q = CQuestManager::instance();
 		LPCHARACTER ch = q.GetCurrentCharacterPtr();
-		ch->SetSafeboxOpenPosition();
+		// No safebox intent: /mall_password has no position check, and the item shop storeroom must not open the
+		// normal safebox (A-23)
 		ch->ChatPacket(CHAT_TYPE_COMMAND, "ShowMeMallPassword");
 		return 0;
 	}
@@ -188,6 +226,9 @@ namespace quest
 			{ "set_safebox_level",			game_set_safebox_level			},
 			{ "open_safebox",				game_open_safebox				},
 			{ "open_mall",					game_open_mall					},
+			{ "get_safebox_activation",	game_get_safebox_activation	},
+			{ "request_safebox_activation",	game_request_safebox_activation	},
+			{ "ensure_safebox_activation",	game_ensure_safebox_activation	},
 			{ "get_event_flag",				game_get_event_flag				},
 			{ "set_event_flag",				game_set_event_flag				},
 			{ "drop_item",					game_drop_item					},

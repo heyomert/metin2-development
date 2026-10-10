@@ -287,11 +287,13 @@ class CClientManager : public CNetBase, public singleton<CClientManager>
 	void		QUERY_SAFEBOX_SAVE(CPeer * pkPeer, TSafeboxTable * pTable);
 	void		QUERY_SAFEBOX_CHANGE_SIZE(CPeer * pkPeer, DWORD dwHandle, TSafeboxChangeSizePacket * p);
 	void		QUERY_SAFEBOX_CHANGE_PASSWORD(CPeer * pkPeer, DWORD dwHandle, TSafeboxChangePasswordPacket * p);
+	void		QUERY_SAFEBOX_ACTIVATE(CPeer * pkPeer, DWORD dwHandle, const TPacketGDSafeboxActivate * p);
 
 	void		RESULT_SAFEBOX_LOAD(CPeer * pkPeer, SQLMsg * msg);
 	void		RESULT_SAFEBOX_CHANGE_SIZE(CPeer * pkPeer, SQLMsg * msg);
 	void		RESULT_SAFEBOX_CHANGE_PASSWORD(CPeer * pkPeer, SQLMsg * msg);
 	void		RESULT_SAFEBOX_CHANGE_PASSWORD_SECOND(CPeer * pkPeer, SQLMsg * msg);
+	void		RESULT_SAFEBOX_ACTIVATE(CPeer * pkPeer, SQLMsg * msg);
 
 	void		QUERY_EMPIRE_SELECT(CPeer * pkPeer, DWORD dwHandle, TEmpireSelectPacket * p);
 	void		QUERY_SETUP(CPeer * pkPeer, DWORD dwHandle, const char * c_pData);

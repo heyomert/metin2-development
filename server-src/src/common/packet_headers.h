@@ -444,6 +444,7 @@ namespace GD
     constexpr uint16_t DELETE_AWARDID        = 0x905A;
     constexpr uint16_t UPDATE_CHANNELSTATUS  = 0x905B;
     constexpr uint16_t REQUEST_CHANNELSTATUS = 0x905C;
+    constexpr uint16_t SAFEBOX_ACTIVATE      = 0x905D;  // A-19 account safebox activation
 
     constexpr uint16_t SETUP                 = 0x90FF;
 }
@@ -554,6 +555,7 @@ namespace DG
     constexpr uint16_t RESULT_CHARGE_CASH    = 0x9159;
     constexpr uint16_t ITEMAWARD_INFORMER    = 0x915A;
     constexpr uint16_t RESPOND_CHANNELSTATUS = 0x915B;
+    constexpr uint16_t SAFEBOX_ACTIVATE_RESULT = 0x915C;  // A-19 account safebox activation
 
     constexpr uint16_t MAP_LOCATIONS         = 0x91FE;
     constexpr uint16_t P2P                   = 0x91FF;

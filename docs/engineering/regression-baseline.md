@@ -59,8 +59,9 @@ Her senaryo: **Amaç · Ön koşul · Adımlar · Client gözlemi · Sunucu/DB k
 ### RB-05 Depo (safebox)
 - **Amaç:** depo üzerinden aynı hesabın karakterleri arasında item aktarımı. **Adımlar:** karakter 1 koyar, karakter 2 alır.
 - **Kanıt:** `SAFEBOX PUT/GET` logları; `save_safebox_err=0`; item'ın son sahibi ve penceresi doğru.
-- **PASS:** item kaybı/çifti yok. **Bilinen, 2a'dan bağımsız:** deposu olan hesabın yeni karakteri depocuyla ilk kez
-  konuşunca `insert.safebox` 1062 (roadmap A-19); bu satır beklenir, regresyon sayılmaz.
+- **PASS:** item kaybı/çifti yok. A-19 (PR-2) sonrası aynı hesabın yeni karakteri ücret ödemez ve `insert.safebox` 1062
+  **görülmez**; görülürse regresyondur (öncesinde beklenen bir satırdı). Hesap aktivasyonu senaryoları:
+  `docs/engineering/safebox-activation.md` bölüm 8.
 
 ### RB-06 Kayıt ve tekrar giriş kalıcılığı
 - **Amaç:** önbellekteki verinin MariaDB'ye yazılması. **Adımlar:** işlemlerden sonra çık → gir → aynı karakteri yükle.

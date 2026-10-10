@@ -13,6 +13,7 @@
 #include "affect_flag.h"
 #include "cube.h"
 #include "mining.h"
+#include "safebox_activation.h"
 
 class CBuffOnAttributes;
 class CPetSystem;
@@ -1500,8 +1501,15 @@ class CHARACTER : public CEntity, public CFSM, public CHorseRider
 		// Safebox
 	public:
 		int					GetSafeboxSize() const;
-		void				QuerySafeboxSize();
 		void				SetSafeboxSize(int size);
+
+		// A-19: account-level activation (docs/engineering/safebox-activation.md); states/codes: safebox_activation.h
+		void				QuerySafeboxActivation();
+		void				SetSafeboxActivationStatus(const safebox_activation::TStatus& kStatus);
+		int					GetSafeboxActivation();
+		int					RequestSafeboxActivation(int iFee);
+		bool				EnsureSafeboxActivation();
+		void				SettleSafeboxActivation(DWORD dwRequestID, BYTE bResult);
 
 		CSafebox *			GetSafebox() const;
 		void				LoadSafebox(int iSize, DWORD dwGold, int iItemCount, TPlayerItem * pItems);
@@ -1531,7 +1539,9 @@ class CHARACTER : public CEntity, public CFSM, public CHorseRider
 		void				LoadMall(int iItemCount, TPlayerItem * pItems);
 		void				CloseMall();
 
-		void				SetSafeboxOpenPosition();
+		// A-23: the storekeeper NPC (game.open_safebox) allows one normal safebox load attempt; nothing else does
+		void				SetSafeboxOpenIntent();
+		void				ClearSafeboxOpenIntent() { m_bSafeboxOpenIntent = false; }
 		float				GetDistanceFromSafeboxOpen() const;
 
 	protected:
@@ -1544,6 +1554,10 @@ class CHARACTER : public CEntity, public CFSM, public CHorseRider
 		int					m_iMallLoadTime;
 
 		PIXEL_POSITION		m_posSafeboxOpen;
+		bool				m_bSafeboxOpenIntent;	///< set by game.open_safebox, consumed by the next ReqSafeboxLoad (A-23)
+		safebox_activation::TState	m_kSafeboxActivation;	///< A-19 account activation, cached per character
+
+		void				SendSafeboxActivation(DWORD dwRequestID);
 
 		////////////////////////////////////////////////////////////////////////////////////////
 

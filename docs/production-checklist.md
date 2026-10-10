@@ -120,6 +120,17 @@ Ayrıntı: `docs/backup.md`. Test VM'de hepsi geçti (`docs/worklog/2026-10-05-d
       artışı yok, syserr'de `[SLOW-GAME]` / `[SLOW-DB]` yok, `lock_ms` production veri büyüklüğünde ölçüldü
 - [ ] Yedek root yerine ayrı bir MariaDB kullanıcısıyla (`MARIADB_EXTRA_FILE`); gereken yetkiler test edilip `docs/backup.md`'ye yazıldı
 
+## Depo hesap aktivasyonu (A-19 / A-23)
+
+Ayrıntı: `docs/engineering/safebox-activation.md` bölüm 6. Hesap aktivasyonu sürümünü (PR-2) kuran her production
+kurulumunda:
+
+- [ ] game ve Metin2 db süreçleri durduruldu (db önbelleği boşaldı), MariaDB çalışıyor; **D' sayımı** (satır yok, SAFEBOX
+      itemi yok, bir karakterde `stash` `use` durumu) salt okunur yapıldı ve sonucu kaydedildi. Test VM sonucu production
+      kanıtı değildir
+- [ ] D' > 0 ise kurulum durduruldu; `m2dev-backup consistent` → ayrıca onaylanmış idempotent backfill → tekrar sayım;
+      **D' = 0 kanıtı olmadan yeni binary'ler başlatılmadı**
+
 ## Gözlemlenebilirlik (Faz 1.5)
 
 - [ ] Sunucu makinesinde saat okuma maliyeti ölçüldü (`tools/metrics/clock-cost.cpp`) ve `sysctl kern.timecounter.hardware`
