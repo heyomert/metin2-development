@@ -144,5 +144,23 @@ Her senaryo: **Amaç · Ön koşul · Adımlar · Client gözlemi · Sunucu/DB k
 - **Kanıtlamadığı:** AMBIGUOUS (sorgu gönderildi, cevap okunamadı) uçtan uca üretilemiyor; karar mantığı
   `tools/change-name/test-change-name-logic.cpp` ile. Aynı anda aynı adı seçen iki oyuncu (g18 yarışı, ayrı iş).
 
+### RB-16 Lonca kurma (NPC, 200.000 yang)
+- **Amaç:** ücret yalnız gerçekten kurulan loncada alınır; başarısız kurmada DB'de ve işaret dosyasında iz kalmaz; lider
+  loncasına eklenir (A-17 g11, `docs/worklog/2026-10-11-guild-create-a17.md`).
+- **Ön koşul:** seviye ≥ 40, loncasız, ≥ 200.000 yang ayrı bir test karakteri (GM `/level`, `/set <ad> gold <eklenecek>`
+  için geçici `common.gmlist` satırı). Başlamadan önce `share/mark/` dosyalarının kopyası ve lonca tablolarının durumu
+  kaydedilir (yedek yalnız SQL içerir, işaret dosyalarını içermez).
+- **Adımlar:** (a) yalnız bir ada özel geçici `BEFORE INSERT ON guild` trigger'ı (`SIGNAL`) ile o adla kur; (b) aynı oturumda,
+  trigger kaldırıldıktan sonra başka adla kur; (c) tam giriş ve servis yeniden başlatma sonrası tekrar gir. Trigger testten
+  sonra kaldırılıp `information_schema.TRIGGERS` ile doğrulanır.
+- **Kanıt:** client mesajı, yang (önbellek yazıldıktan sonra DB'de de), lonca paneli; `guild`, `guild_member`, `guild_grade`,
+  `share/mark/mark_index`; game syslog `Guild created`, `AllocMark`, `GUILD: AddMember`; db syslog `GuildCreate`,
+  `GuildAddMember`; syserr `GUILD_CREATE: failed master_pid=…`; hata defteri `insert.guild`.
+- **PASS:** (a) "Creation of the guild has failed.", yang değişmez, lonca paneli boş, tablolarda ve `mark_index`'te değişiklik
+  yok, NPC'de isim kutusu tekrar açılıyor. (b) "guild has been created", −200.000 yang, lonca satırı + 15 derece +
+  `guild_member (pid, id, 1)` + işaret yuvası, panelde lider. (c) lonca ve üyelik kalıcı.
+- **Kanıtlamadığı:** AMBIGUOUS (INSERT uygulandı, id okunamadı) uçtan uca üretilemiyor; db'nin `guild_id = 0` reddi normal
+  client ile tetiklenemiyor (kod + birim testi). Üyelik INSERT'inin normal kurulumda başarısız olması (A-27).
+
 ## İlk koşu özeti (PR #22, 2026-10-07; tekrar ölçüt değil)
 RB-01…RB-14 PASS. Bulunan ve 2a'dan bağımsız olanlar roadmap A-19…A-22'de.

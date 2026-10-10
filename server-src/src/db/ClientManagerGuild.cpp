@@ -10,6 +10,13 @@
 
 void CClientManager::GuildCreate(CPeer * peer, DWORD dwGuildID)
 {
+	// Guild 0 is never a row (AUTO_INCREMENT starts at 1): broadcasting it built guild 0 objects on every core (A-17 g11)
+	if (!dwGuildID)
+	{
+		sys_err("GuildCreate: rejected guild id 0");
+		return;
+	}
+
 	sys_log(0, "GuildCreate %u", dwGuildID);
 	ForwardPacket(DG::GUILD_LOAD, &dwGuildID, sizeof(DWORD));
 
@@ -24,6 +31,14 @@ void CClientManager::GuildChangeGrade(CPeer* peer, TPacketGuild* p)
 
 void CClientManager::GuildAddMember(CPeer* peer, TPacketGDGuildAddMember * p)
 {
+	// A member row of guild 0 is never loaded but keeps guild_member.pid (UNIQUE) taken: the player could not join or
+	// found any guild afterwards (A-17 g11)
+	if (!p->dwGuild)
+	{
+		sys_err("GuildAddMember: rejected guild id 0 pid=%u", p->dwPID);
+		return;
+	}
+
 	CGuildManager::instance().TouchGuild(p->dwGuild);
 	sys_log(0, "GuildAddMember %u %u", p->dwGuild, p->dwPID);
 
