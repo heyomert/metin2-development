@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Nincs elég Yangod! "
 gameforge.guild_war_bet._10_npcChat = "Céhháború fogadás "
 gameforge.guild_war_bet._110_say = "Minden készen áll. Ha jól tippeltél, akkor[ENTER]megkapod a Yangod a céh háború végén. Sok[ENTER]szerencsét! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "A céh fogadás. "
 gameforge.guild_war_bet._30_say = "Vásárolj szerencse szelvényeket a birodalmadnak.[ENTER][ENTER]1. Minden céhháborúban van egy előre kihirdetett[ENTER]várható eredmény a potenciális győztes céhet[ENTER]illetően.[ENTER]2. Vehetsz egy fogadó szelvényt, amin[ENTER]megtippeled, hogy az általad választott céh[ENTER]eléri-e az előre jelzett eredményt vagy sem.[ENTER]3. A választás a fogadó standtól függ, és a[ENTER]céhháború után értesítést kapsz, hogy nyertél[ENTER]vagy vesztettél.[ENTER][ENTER]* A nyeremény 10%-a birodalom számára lesz[ENTER]kifizetve. "
 gameforge.guild_war_bet._35_table = "%s vs %s "

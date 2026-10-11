@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "¡No tienes suficiente Yang! "
 gameforge.guild_war_bet._10_npcChat = "Apuesta de guerra de gremio "
 gameforge.guild_war_bet._110_say = "Todo está preparado. Si hiciste la elección[ENTER]correcta, se te pagará cuando la guerra de gremio[ENTER]haya terminado.[ENTER]¡Buena suerte! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "La apuesta de gremio "
 gameforge.guild_war_bet._30_say = "Compra un Tique de apuesta para tu reino.[ENTER][ENTER]1. En cada guerra de gremio, hay un anuncio[ENTER]concerniente al posible pronóstico sobre por[ENTER]cuanto ganará el gremio victorioso.[ENTER]2. Comprado un Tique de apuesta, puedes apostar[ENTER]si el gremio que piensas que ganará va a alcanzar[ENTER]la diferencia pronosticada o no.[ENTER]3. Las posibilidades de elegir una apuesta[ENTER]dependen de la cabina de apuestas.[ENTER]Una vez que acaba la guerra, serás informado[ENTER]sobre si ganaste o perdiste.[ENTER][ENTER]*El 10% de los beneficios se paga al reino. "
 gameforge.guild_war_bet._35_table = "%s contra %s "

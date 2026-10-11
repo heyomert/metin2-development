@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Ty Yangy nestačí! "
 gameforge.guild_war_bet._10_npcChat = "Sázka na válku cechů "
 gameforge.guild_war_bet._110_say = "Všechno je připravené. Pokud jsi tipoval správně,[ENTER]obdržíš výhru, jakmile válka cechů skončí.[ENTER]Hodně štěstí! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "Cechovní sázka "
 gameforge.guild_war_bet._30_say = "Kupuj tipovací lístky pro tvé království.[ENTER][ENTER]1. Při každé válce cechů je vyhlášená[ENTER]pravděpodobná výše výsledku vítězného cechu.[ENTER]2. Můžeš si koupit lístek, na kterém tipuješ,[ENTER]jestli tvůj cech dosáhne vyhlášeného rozdílu ve[ENTER]výsledku nebo ne.[ENTER]3. Výsledek sázek určuje sázkový stánek a po[ENTER]válce cechů obdržíš zprávu, jestli jsi vyhrál[ENTER]nebo prohrál.[ENTER][ENTER]* 10 % výhry bude vyplaceno ve prospěch[ENTER]království. "
 gameforge.guild_war_bet._35_table = "%s proti %s "

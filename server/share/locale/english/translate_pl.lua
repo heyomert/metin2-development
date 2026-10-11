@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Masz za mało Yang! "
 gameforge.guild_war_bet._10_npcChat = "Zakład wojny gildii "
 gameforge.guild_war_bet._110_say = "Wszystko gotowe! Jeśli dobrze obstawiłeś, Yang[ENTER]zostaną Ci wypłacone gdy wojna się skończy.[ENTER]Powodzenia! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "Zakład wojny gildii "
 gameforge.guild_war_bet._30_say = "Kup bilet zakładowy twojego Królestwa.[ENTER][ENTER]1. Podczas każdej wojny, ogłoszona będzie suma,[ENTER]jaką wygrać może gildia, która zwycięży.[ENTER]2. Kupując bilet zakładowy to ty decydujesz, na[ENTER]kogo postawisz.[ENTER]3. Wynik należy obstawiać u Egzekutora.[ENTER]Kiedy wojna się zakończy, dostaniesz informację o[ENTER]tym, czy wygrałeś czy przegrałeś.[ENTER][ENTER]*10% zysku jest pobierane przez Królestwo. "
 gameforge.guild_war_bet._35_table = "%s przeciwko %s "
