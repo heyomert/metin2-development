@@ -132,7 +132,7 @@ bir cümle ("neyi kontrol ettim") yeter; **Orta**'da ilgili maddeler; **Yüksek*
 
 ## 7. Regresyon ailesi seçimi
 
-Gerçek client senaryoları `docs/engineering/regression-baseline.md`'de (RB-01…RB-16). Her PR'da hepsi koşulmaz: değişikliğin
+Gerçek client senaryoları `docs/engineering/regression-baseline.md`'de (RB-01…RB-17). Her PR'da hepsi koşulmaz: değişikliğin
 dokunduğu **garantiler** belirlenir ve yalnız ilgili aile zorunlu olur. Aile seçilmezse PR'da `Etkilenmiyor — <neden>` yazılır.
 
 | Değişiklik türü (örnek) | Etkilenebilecek garanti | Zorunlu senaryolar |
@@ -143,6 +143,7 @@ dokunduğu **garantiler** belirlenir ve yalnız ilgili aile zorunlu olur. Aile s
 | Karakter / hesap | sahiplik, `player_index`, oluşturma/yükleme | RB-01, RB-02, RB-03, RB-06 |
 | Karakter adı (isim değiştirme, ad kontrolü) | ad tutarlılığı (liste/oyun/DB), item ve bekleme süresinin yalnız başarıda tüketilmesi | RB-01, RB-06, RB-15 |
 | Lonca kurma / üyelik | ücretin yalnız gerçek loncada alınması, yetim `guild_member`/`guild_grade`/işaret yuvası yok, lider üyeliği | RB-01, RB-06, RB-10, RB-16 |
+| Lonca savaşı bahsi / quest metni (`translate*.lua`) | bahis ve iade yang korunumu, quest'in her dilde çökmeden çalışması | RB-06, RB-10, RB-17 + dil dosyası yer tutucu kontrolü |
 | Ekonomi / item (drop, craft, kullanım) | kayıt, çift/kayıp, kalıcılık | RB-06, RB-09, RB-10 (+ ticaret/depo yolu değiştiyse RB-04/RB-05) |
 | SQL katmanı / db önbelleği / AsyncSQL | kesinti ve yeniden bağlanma, sıra (FIFO), kapanış, log güvenliği | RB-03, RB-07…RB-14 + `tools/sql-reliability` (S1–S12, sqlprobe) |
 | Log / telemetri | gizlilik, defter tutarlılığı | RB-14 |

@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Je hebt niet genoeg Yang! "
 gameforge.guild_war_bet._10_npcChat = "Gilde Oorlog Weddenschap "
 gameforge.guild_war_bet._110_say = "Alles is gereed. Als je de juiste keuze maakt,[ENTER]zul je je Yang ontvangen wanneer de gilde oorlog[ENTER]over is. Veel succes! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "De Gilde Weddenschap "
 gameforge.guild_war_bet._30_say = "Koop een weddenschap briefje voor je Koninkrijk.[ENTER][ENTER]1. Bij elke Gilde Oorlog, is er een aankondiging[ENTER]over de mogelijke voorspelling van hoe hoog de[ENTER]winnende Gilde zal winnen.[ENTER]2. Als je een weddenschap briefje hebt gekocht,[ENTER]kun je wedden of dat de Gilde die je denkt gaat[ENTER]winnen het beoogde verschil gaat halen of niet.[ENTER]3. De mogelijkheden om een weddenschap te kiezen[ENTER]hangt van het wedkantoor af. Wanneer de oorlog[ENTER]over is, zul je geïnformeerd worden of dat je[ENTER]gewonnen hebt of niet.[ENTER][ENTER]*10% van de winst word aan het Koninkrijk betaald. "
 gameforge.guild_war_bet._35_table = "%s tegen %s "

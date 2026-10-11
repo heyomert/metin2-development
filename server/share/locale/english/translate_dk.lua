@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Det er ikke nok Yang! "
 gameforge.guild_war_bet._10_npcChat = "Ordens-krigs-væddemål "
 gameforge.guild_war_bet._110_say = "Alt er klar. Når du har væddet rigtigt og[ENTER]Ordens-krigen er forbi, vil dit udbytte ligge i[ENTER]dit lager. Held og lykke! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "Ordens-væddemål. "
 gameforge.guild_war_bet._30_say = "Køb en væddemåls seddel til dit Rige.[ENTER][ENTER]1. For alle ordenskrige, er der en[ENTER]forudannonceret forudsigelse af det mulige[ENTER]resultat, annoncerende de potentielle vindere.[ENTER]2. Du kan købe en væddemåls seddel, herpå kan du[ENTER]skrive om du tror at den orden du tror på vil[ENTER]opnå det forudsagte resultat.[ENTER]3. Valget bliver bestemt af vædde-butikken. Efter[ENTER]Ordenskrigen får du en meddelelse om du vandt[ENTER]eller tabte.[ENTER][ENTER]*10% af det vundne beløb bliver udbetalt til dit[ENTER]Rige. "
 gameforge.guild_war_bet._35_table = "%s imod %s "

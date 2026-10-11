@@ -162,5 +162,24 @@ Her senaryo: **Amaç · Ön koşul · Adımlar · Client gözlemi · Sunucu/DB k
 - **Kanıtlamadığı:** AMBIGUOUS (INSERT uygulandı, id okunamadı) uçtan uca üretilemiyor; db'nin `guild_id = 0` reddi normal
   client ile tetiklenemiyor (kod + birim testi). Üyelik INSERT'inin normal kurulumda başarısız olması (A-27).
 
+### RB-17 Lonca savaşı bahsi (gözlemci NPC, iade)
+- **Amaç:** bahis kabulü, her ret yolunda iade (`item_award` → depoda Coins → yang) ve yeniden başlatma/beraberlik sonrası
+  kalıcılık (A-17 d29, A-31; `docs/worklog/2026-10-11-guild-war-bet-quest.md`).
+- **Ön koşul:** deposu aktif ayrı bir test hesabı; yang için geçici `common.gmlist` satırı; **senaryo başına ayrı**
+  `guild_war_reservation` (`type=1` battle, `started=0`, gelecek zaman; lonca adları yalnız harf+rakam, A-37). Bahis
+  kaydı savaş id'si başına olduğu için senaryolar birbirini kirletmez.
+- **Adımlar:** (T1) başarı; (T2) yalnız o savaş+hesap için geçici `BEFORE INSERT ON guild_war_bet` trigger'ı (kalıcı INSERT
+  hatası); (T3) `outage.sh` sırasında bahis; (T4) iadeler teslim edilmeden yeniden başlatma; (T6) bir rezervasyonun zamanı
+  geçmişe çekilip yeniden başlatma (`BootReserveWar` → beraberlik iadesi). Trigger sonra kaldırılıp doğrulanır.
+- **Kanıt:** client mesajı (`_115_say`, tekrar denemede `_70_say`), yang (önbellek yazıldıktan sonra DB'de de),
+  `guild_war_bet`, `guild_war_reservation.bet_from/bet_to`, `item_award` (50026, `socket0`, `taken_time`), depoda Coins ve
+  kullanınca yang; db syslog `GuildWarReserve::Bet`, `WAR_RESERVE`, `WAR_REWARD`; hata defteri `insert.guild_war_bet`.
+- **PASS:** (T1) yang −tutar, bahis satırı, toplam güncel; (T2/T3) yang −tutar, bahis satırı yok, tam bir `item_award`,
+  teslimde yang +tutar; (T4) iade kalır ve teslim edilir; (T6) beraberlikte bahis iade edilir. Çift iade yok.
+- **Kanıtlamadığı:** kazanan ödemesi (`CGuildWarReserve::End`, gerçek savaş gerekir), AMBIGUOUS ve önbellek kaybı (A-27),
+  deposu `INACTIVE` hesapta iade (A-34).
+- **İlk koşu (PR #29, 2026-10-11, exact commit `10c3d7da8`; tekrar ölçüt değil):** T1, T2, T3, T4, T6 PASS; yang 599.500 →
+  (3 bahis −30.000, 3 iade +30.000) → 599.500, çift iade yok. Ayrıntı worklog'da.
+
 ## İlk koşu özeti (PR #22, 2026-10-07; tekrar ölçüt değil)
 RB-01…RB-14 PASS. Bulunan ve 2a'dan bağımsız olanlar roadmap A-19…A-22'de.

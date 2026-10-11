@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "You don't have enough Yang! "
 gameforge.guild_war_bet._10_npcChat = "Guild war bet "
 gameforge.guild_war_bet._110_say = "Everything is ready. If you have made the right[ENTER]choice, you'll receive the Yang when the guild[ENTER]war is over. Good luck! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "The guild bet "
 gameforge.guild_war_bet._30_say = "Buy betting slips for your kingdom.[ENTER][ENTER]1. For every guild war, there is a pre-announced[ENTER]projection of the possible outcome announcing the[ENTER]potential winners.[ENTER]2. You can buy a betting slip. On the betting[ENTER]slip you can write whether you think that the[ENTER]guild you believe in will achieve the results[ENTER]forecast.[ENTER]3. The choices are determined by the betting[ENTER]booth. After the guild war, you will be informed[ENTER]whether you have won or lost.[ENTER][ENTER]* 10% of the winnings will be paid out to the[ENTER]kingdom. "
 gameforge.guild_war_bet._35_table = "%s against %s "

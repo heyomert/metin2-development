@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "У вас недостаточно янг! "
 gameforge.guild_war_bet._10_npcChat = "Ставка на Войну гильдий "
 gameforge.guild_war_bet._110_say = "Все готово. Если вы сделаете правильный выбор,[ENTER]вам выплатят янг по окончании Войны гильдий.[ENTER]Удачи! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "Ставка на гильдии. "
 gameforge.guild_war_bet._30_say = "Купите букмекерскую квитанцию для вашей империи.[ENTER][ENTER]1.В каждой войне гильдий объявляется вероятность[ENTER]победы лидирующей гильдии.[ENTER]2.Покупая букмекерскую квитанцию, вы можете[ENTER]сделать ставку на то, победит ли гильдия с данной[ENTER]вероятностью или нет.[ENTER]3.Выбор определяется лотерейной стойкой. Как[ENTER]только война закончится, вам сообщат, выиграли вы[ENTER]или нет.[ENTER][ENTER]* 10% прибыли будет выплачено империи. "
 gameforge.guild_war_bet._35_table = "%s против %s "

@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Não tens Yang suficiente! "
 gameforge.guild_war_bet._10_npcChat = "Aposta em Guerra de Guilds "
 gameforge.guild_war_bet._110_say = "Está tudo pronto. Se fizeste a escolha certa[ENTER]receberás o Yang quando a Guerra de Guilds[ENTER]terminar. Boa sorte! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "A aposta na Guild "
 gameforge.guild_war_bet._30_say = "Comprar Bilhetes de Apostas para o teu Reino.[ENTER][ENTER]1. Para todas as Guerras de Guild existe uma[ENTER]projecção, anunciada antecipadamente, do[ENTER]resultado e vencedores .[ENTER]2. Podes comprar um Bilhete de Apostas. No[ENTER]Bilhete de Apostas podes escrever se achas que a[ENTER]Guild vai atingir os resultados previstos.[ENTER]3. As escolhas são determinadas pela casa de[ENTER]apostas. Depois da Guerra de Guilds irás ser[ENTER]informado se ganhaste ou perdeste.[ENTER][ENTER]* 10% dos ganhos reverterão para os Cofres do[ENTER]Reino. "
 gameforge.guild_war_bet._35_table = "%s contra %s "

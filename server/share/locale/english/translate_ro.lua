@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Yang insuficient!"
 gameforge.guild_war_bet._10_npcChat = "Pariul pentru războiul breslelor"
 gameforge.guild_war_bet._110_say = "Totul e gata. Daca ai facut alegerea corecta, vei[ENTER]primi Yang-ul atunci can razboiul breslelor se[ENTER]sfarseste. Succes!"
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "Pariul breslelor"
 gameforge.guild_war_bet._30_say = "Cumpără bilete de pariuri pentru regatul tău.[ENTER][ENTER]1. La fiercare război al Gildelor există o[ENTER]ștachetă, anunțată În prealabil, pentru Gilde[ENTER]care va câștiga.[ENTER]2. Poți cumpăra un bilet pentru pariuri pe care[ENTER]ghicești dacă Gide, despre care tu crezi că va[ENTER]câștiga, va reuși să depășească această ștachetă.[ENTER]3. Alegerea va fi determinată de proporția[ENTER]pariurilor, iar după război vei fi anunțat daca[ENTER]pierzi sau câștigi.[ENTER][ENTER]* 10% din câștigul pariurilor va fi plătit[ENTER]regatului."
 gameforge.guild_war_bet._35_table = "%s Împotriva %s"

@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Δεν έχεις αρκετά Yang! "
 gameforge.guild_war_bet._10_npcChat = "Συντεχνιακό Στοίχημα Πολέμου "
 gameforge.guild_war_bet._110_say = "Όλα είναι έτοιμα. Αν κάνεις την σωστή επιλογή, θα[ENTER]πληρωθείς όταν τελειώσει ο πόλεμος των[ENTER]συντεχνιών. Καλή Τύχη! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "Τα Συντεχνιακά Στοιχήματα "
 gameforge.guild_war_bet._30_say = "Αγόρασε Λαχνό για το Βασίλειό σου.[ENTER][ENTER]1. Σε κάθε πόλεμο συντεχνιών, θα γίνεται[ENTER]ανακοίνωση του πιθανού αποτελέσματος της[ENTER]νικητήριας συντεχνίας.[ENTER]2. Μπορείς να αγοράσεις Λαχνό, και να δηλώσεις[ENTER]ποια συντεχνία κατά τη γνώμη σου θα κερδίσει και[ENTER]αν θα φέρει το ανακοινωμένο πιθανό αποτέλεσμα ή[ENTER]όχι.[ENTER]3. Η ψηφοφορία καθορίζεται από το Κέντρο[ENTER]Στοιχημάτων και όταν ο πόλεμος λήξει, θα[ENTER]ειδοποιηθείς για το αν κέρδισες ή έχασες.[ENTER][ENTER]* 10% των κερδών πάνε στο Βασίλειο. "
 gameforge.guild_war_bet._35_table = "%s εναντίον %s "

@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Non hai abbastanza Yang! "
 gameforge.guild_war_bet._10_npcChat = "Scommesse guerre "
 gameforge.guild_war_bet._110_say = "È tutto pronto. Se avrai fatto la scelta giusta,[ENTER]al termine della guerra della gilda lo Yang sarà[ENTER]tuo. Buona fortuna! "
+gameforge.guild_war_bet._115_say = "Your betting slip has been submitted.[ENTER]If it cannot be accepted, your Yang will be returned[ENTER]to your warehouse as Coins. Good luck! "
 gameforge.guild_war_bet._20_sayTitle = "La gilda scommette "
 gameforge.guild_war_bet._30_say = "Compra un biglietto per il tuo regno.[ENTER][ENTER]1. Per ogni guerra tra gilde, ci sarà un[ENTER]preannunciato vantaggio sul risultato, per la[ENTER]gilda dichiarata come più possibile vincitrice.[ENTER]2. Puoi acquistare un biglietto per la gilda su[ENTER]cui scommetti sia che essa raggiunga il[ENTER]preannunciato discatto o meno.[ENTER]3. Le possibilità di scelta vengono decise[ENTER]attraverso il banco scommesse e dopo la guerra[ENTER]riceverai un messaggio che ti informerà se avrai[ENTER]vinto o perso.[ENTER][ENTER]Il 10% della vincita va al regno. "
 gameforge.guild_war_bet._35_table = "%s contro %s "

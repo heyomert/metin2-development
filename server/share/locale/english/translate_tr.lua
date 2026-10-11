@@ -1443,6 +1443,7 @@ gameforge.guild_war_bet = {}
 gameforge.guild_war_bet._100_say = "Yeterince Yang'ın yok. "
 gameforge.guild_war_bet._10_npcChat = "Lonca savaşı bahsi "
 gameforge.guild_war_bet._110_say = "Herşey hazır. Eğer doğru seçimi yaptıysan, savaş[ENTER]bittiğinde ödeme alacaksın. İyi şanslar! "
+gameforge.guild_war_bet._115_say = "Bahis fişin teslim edildi.[ENTER]Kabul edilmezse yangın Coins olarak depona[ENTER]iade edilecek. İyi şanslar! "
 gameforge.guild_war_bet._20_sayTitle = "Lonca savaşı bahsi "
 gameforge.guild_war_bet._30_say = "Kendi devletine piyango bileti al.[ENTER][ENTER]1. Her Lonca Savaşında, loncalarin kazanması[ENTER]halindeki kar miktarları önceden ilan edilir.[ENTER]2. Bir piyango bileti alip, tahmin sonuçlarını ve[ENTER]oyun farklarını söyleyerek, istediğin loncaya[ENTER]oynayabilirsin.[ENTER]3. Seçim işlemi piyango standında yapılır.[ENTER]Kazanıp kaybettiğin konusundaki haberi, lonca[ENTER]savaşından sonra alacaksın.[ENTER][ENTER]* Kazancının %10'u devletine gidecek. "
 gameforge.guild_war_bet._35_table = "%s vs. %s "
