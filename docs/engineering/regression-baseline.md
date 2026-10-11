@@ -178,6 +178,8 @@ Her senaryo: **Amaç · Ön koşul · Adımlar · Client gözlemi · Sunucu/DB k
   teslimde yang +tutar; (T4) iade kalır ve teslim edilir; (T6) beraberlikte bahis iade edilir. Çift iade yok.
 - **Kanıtlamadığı:** kazanan ödemesi (`CGuildWarReserve::End`, gerçek savaş gerekir), AMBIGUOUS ve önbellek kaybı (A-27),
   deposu `INACTIVE` hesapta iade (A-34).
+- **İlk koşu (PR #29, 2026-10-11, exact commit `10c3d7da8`; tekrar ölçüt değil):** T1, T2, T3, T4, T6 PASS; yang 599.500 →
+  (3 bahis −30.000, 3 iade +30.000) → 599.500, çift iade yok. Ayrıntı worklog'da.
 
 ## İlk koşu özeti (PR #22, 2026-10-07; tekrar ölçüt değil)
 RB-01…RB-14 PASS. Bulunan ve 2a'dan bağımsız olanlar roadmap A-19…A-22'de.

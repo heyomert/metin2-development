@@ -4,13 +4,13 @@ Kapsadığı commit: `fix/guild-war-bet-quest` (2026-10-11; main = `36d70049c`).
 Güncel mi? `git log --oneline origin/fix/guild-war-bet-quest..origin/main -- . ':!docs/status.md'` bir şey gösteriyorsa eski olabilir.
 
 ## Şu an
-- **A-17 d29 / A-31 bahis quest'i** (`docs/worklog/2026-10-11-guild-war-bet-quest.md`): d29 "telafi yok" yanlıştı (iade `item_award`
-  ile var, A-17 kod değişikliği gerekmiyor). İngilizce bahis quest'i her denemede çöküyordu; düzeltme (quest + 15 dil dosyası) bu dalda.
-  **RB-17 kabulü (T1-T4, T6) exact commit ile sürüyor**; d29 runtime kanıtıyla kapanacak. Kazanan ödemesi → A-27 (release kabulü).
+- **A-17 d29 / A-31…A-33 bahis quest'i** (PR #29, `docs/worklog/2026-10-11-guild-war-bet-quest.md`): d29 "telafi yok" yanlıştı, A-17 kod
+  değişikliği gerekmiyor. Quest + 15 dil dosyası düzeltmesi exact commit ile **RB-17 T1/T2/T3/T4/T6 PASS**; **merge onay bekliyor**.
+  Kazanan ödemesi uçtan uca kanıtlanmadı → bahis sistemi production-ready değil (A-27, release kabulü).
 - **Bitenler (`main`, production kurulumu yok):** A-17 g11 (PR #28), g19 (PR #27), d25, 2a, depo A-23/A-19, T-1/T-2.
 
 ## Sıradaki (her adım ayrı etki analizi + onay)
-1. Bahis quest'i kabul + merge, d29 kapanışı → 2. **A-29** lonca kurma paketinde sunucu yetkisi (yüksek) → 3. A-17 kalanı
+1. PR #29 merge (d29 kapanır) → 2. **A-29** lonca kurma paketinde sunucu yetkisi (yüksek) → 3. A-17 kalanı
 (d16/d27, g6, `QUERY_PLAYER_LOAD` sahipliği) → 4. 2b → 5. şema/migration standardı (A-28) → 6. InnoDB
 Production/public öncesi: **A-27** ekonomi atomikliği (isim, lonca, bahis; kazanan ödemesi), **A-35** Türkçe dil dosyası paritesi.
 Bağımsız: A-34, A-36, A-37, A-30 (Unverified), A-15, A-16, A-20…A-26, T-3, T-4, `db.core`, A-14, A-12, CHECKPOINT, release yolu.
