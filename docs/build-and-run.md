@@ -95,6 +95,18 @@ service m2dev start
 ### Quest derleme
 - `server/share/locale/english/quest/make.py` sadece `locale_list`'teki quest'leri `qc` ile `object/`'e derler (`make.py:71`).
 - VM'de nasıl çalıştırıldığı kayıtlı değil (Unverified). VM'de `/root/m2dev-acceptance-quest-build.log` var.
+- Tek bir quest'i derlemek: quest dosyasının bulunduğu klasörde `./qc <ad>.quest`; `qc`, çağrılan her fonksiyonu
+  `quest_functions`'a karşı doğrular ve `object/` altına yazar (A-19 ve bahis quest'i düzeltmesinde böyle kuruldu).
+
+### Quest metinleri ve dil dosyaları
+- Quest metinleri `gameforge.*` anahtarları. game Avrupa locale'inde **yalnız** `locale/english/translate.lua`'yı yükler
+  (`server-src/src/game/questlua.cpp:555-566`, sabit dosya adı). `translate_<dil>.lua` dosyaları çalışma anında okunmaz ve
+  **otomatik geri düşme değildir**: dil değiştirmek o dosyayı `translate.lua` yerine koymak demektir.
+- Eksik anahtar `nil` olur ve quest Lua hatasıyla durur; geri düşme yoktur. Bu yüzden yeni ya da biçimi değişen bir anahtar
+  **bütün** `translate*.lua` dosyalarında aynı yer tutucu dizisiyle (`%s`/`%d` sayısı, sırası, tipi) bulunmalı. Güvenilir
+  çeviri yoksa o dilde İngilizce metin konur ve çeviri kalitesi borcu olarak kaydedilir (roadmap A-36).
+- Quest'te biçimlendirilecek metin `string.format(anahtar, …)` ile kullanılır; şablon anahtarını `..` ile birleştirmek
+  `%s`'yi oyuncuya ham gösterir (A-31). Bilinen açıklar: A-35 (Türkçe paritesi), A-36 (otomatik kontrol, `locale.gold`).
 
 ### Server binary'lerini derleme (VM)
 Doğrulandı 2026-10-05: sıfırdan yapılandırma 12 sn, derleme 116 sn (`-j4`), 0 hata, 372 uyarı.
